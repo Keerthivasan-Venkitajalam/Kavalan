@@ -110,9 +110,11 @@ class VideoProcessor:
     LEFT_EYE_LANDMARKS = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246]
     RIGHT_EYE_LANDMARKS = [362, 382, 381, 380, 374, 373, 390, 249, 263, 466, 388, 387, 386, 385, 384, 398]
     
-    # EAR calculation points (6 points per eye)
-    LEFT_EYE_POINTS = [33, 160, 158, 133, 153, 144]  # Outer, top, bottom corners
-    RIGHT_EYE_POINTS = [362, 385, 387, 263, 373, 380]
+    # EAR calculation points (6 points per eye) - CORRECT landmarks from reference
+    # p1=outer corner, p2=upper1, p3=upper2, p4=inner corner, p5=lower1, p6=lower2
+    # EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
+    RIGHT_EYE_POINTS = [33, 159, 158, 133, 153, 145]   # Right eye EAR points
+    LEFT_EYE_POINTS = [362, 380, 374, 263, 386, 385]   # Left eye EAR points
     
     # Head pose estimation landmarks (nose tip, chin, eye corners, mouth corners)
     HEAD_POSE_LANDMARKS = [1, 33, 263, 61, 291, 199]  # Key facial points for pose
@@ -231,35 +233,45 @@ class VideoProcessor:
             self.dnn_face_detector = None
 
     def _init_mediapipe(self):
-        """Initialize MediaPipe Face Mesh and Selfie Segmentation"""
+        """Initialize MediaPipe Face Landmarker using Tasks API"""
         if not MEDIAPIPE_AVAILABLE:
             logger.warning("MediaPipe not available")
             return
             
         try:
-            # Initialize Face Mesh
-            from mediapipe.python.solutions import face_mesh as mp_face_mesh
-            from mediapipe.python.solutions import selfie_segmentation as mp_selfie
+            from mediapipe.tasks import python
+            from mediapipe.tasks.python import vision
             
-            self.mp_face_mesh = mp_face_mesh
-            self.face_mesh = self.mp_face_mesh.FaceMesh(
-                static_image_mode=False,
-                max_num_faces=2,  # Detect both user and potential scammer
-                refine_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5
+            # Get model path
+            model_dir = Path(__file__).parent.parent / 'models'
+            model_path = model_dir / 'face_landmarker.task'
+            
+            # Download model if not present
+            if not model_path.exists():
+                logger.info("Downloading MediaPipe FaceLandmarker model...")
+                model_url = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task'
+                urllib.request.urlretrieve(model_url, str(model_path))
+                logger.info(f"Downloaded model to {model_path}")
+            
+            # Create FaceLandmarker with Tasks API
+            base_options = python.BaseOptions(model_asset_path=str(model_path))
+            options = vision.FaceLandmarkerOptions(
+                base_options=base_options,
+                running_mode=vision.RunningMode.IMAGE,
+                output_face_blendshapes=True,
+                num_faces=2
             )
-            
-            # Initialize Selfie Segmentation for privacy redaction
-            self.mp_selfie = mp_selfie
-            self.selfie_segmentation = self.mp_selfie.SelfieSegmentation(model_selection=1)
-            
+            self.face_landmarker = vision.FaceLandmarker.create_from_options(options)
+            self.face_mesh = self.face_landmarker  # Alias for compatibility
+            self.mp_image_module = mp  # Store for Image creation
             self.detection_method = "mediapipe"
-            logger.info("MediaPipe Face Mesh and Selfie Segmentation initialized")
+            self.selfie_segmentation = None  # Tasks API doesn't have this yet
+            logger.info("MediaPipe FaceLandmarker initialized (Tasks API)")
             
         except Exception as e:
             logger.warning(f"MediaPipe initialization failed: {e}")
             self.face_mesh = None
+            self.face_landmarker = None
             self.selfie_segmentation = None
     
     def _init_opencv_fallback(self):
@@ -493,6 +505,111 @@ class VideoProcessor:
         
         return HeadPose()
     
+    def calculate_ear_tasks(self, landmarks: List, eye_points: List[int], frame_shape: Tuple[int, int, int]) -> float:
+        """
+        Calculate Eye Aspect Ratio (EAR) from MediaPipe Tasks API landmarks
+        
+        EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
+        
+        Args:
+            landmarks: List of NormalizedLandmark from Tasks API
+            eye_points: List of 6 landmark indices for one eye
+            frame_shape: Shape of frame for coordinate scaling
+            
+        Returns:
+            EAR value (typically 0.2-0.4 for open eyes, <0.2 for closed)
+        """
+        try:
+            # Extract eye points from Tasks API format
+            points = []
+            for idx in eye_points:
+                lm = landmarks[idx]
+                points.append([lm.x, lm.y])
+            
+            points = np.array(points)
+            
+            # Calculate distances
+            # Vertical distances
+            A = np.linalg.norm(points[1] - points[5])  # Top to bottom (outer)
+            B = np.linalg.norm(points[2] - points[4])  # Top to bottom (inner)
+            
+            # Horizontal distance
+            C = np.linalg.norm(points[0] - points[3])  # Left to right
+            
+            # Calculate EAR
+            if C > 0:
+                ear = (A + B) / (2.0 * C)
+            else:
+                ear = 0.0
+            
+            return ear
+            
+        except Exception as e:
+            logger.error(f"Error calculating EAR (Tasks API): {e}")
+            return 0.0
+    
+    def estimate_head_pose_tasks(self, landmarks: List, frame_shape: Tuple[int, int, int]) -> HeadPose:
+        """
+        Estimate head pose from MediaPipe Tasks API landmarks
+        
+        Args:
+            landmarks: List of NormalizedLandmark from Tasks API
+            frame_shape: Shape of the frame (height, width, channels)
+            
+        Returns:
+            HeadPose with pitch, yaw, roll values
+        """
+        try:
+            h, w = frame_shape[:2]
+            
+            # Extract 2D image points
+            image_points = []
+            landmark_indices = [1, 33, 263, 61, 291, 199]  # Nose, eyes, mouth corners, chin
+            
+            for idx in landmark_indices:
+                lm = landmarks[idx]
+                image_points.append([lm.x * w, lm.y * h])
+            
+            image_points = np.array(image_points, dtype=np.float64)
+            
+            # Camera matrix (approximate)
+            focal_length = w
+            center = (w / 2, h / 2)
+            camera_matrix = np.array([
+                [focal_length, 0, center[0]],
+                [0, focal_length, center[1]],
+                [0, 0, 1]
+            ], dtype=np.float64)
+            
+            # No lens distortion
+            dist_coeffs = np.zeros((4, 1))
+            
+            # Solve PnP
+            success, rotation_vec, translation_vec = cv2.solvePnP(
+                self.MODEL_POINTS_3D,
+                image_points,
+                camera_matrix,
+                dist_coeffs,
+                flags=cv2.SOLVEPNP_ITERATIVE
+            )
+            
+            if success:
+                # Convert rotation vector to Euler angles
+                rotation_mat, _ = cv2.Rodrigues(rotation_vec)
+                pose_mat = cv2.hconcat([rotation_mat, translation_vec])
+                _, _, _, _, _, _, euler_angles = cv2.decomposeProjectionMatrix(pose_mat)
+                
+                pitch = euler_angles[0][0]
+                yaw = euler_angles[1][0]
+                roll = euler_angles[2][0]
+                
+                return HeadPose(pitch=pitch, yaw=yaw, roll=roll)
+            
+        except Exception as e:
+            logger.debug(f"Head pose estimation (Tasks API) failed: {e}")
+        
+        return HeadPose()
+
     def calculate_head_pose_variance(self) -> float:
         """
         Calculate variance in head pose over recent frames
@@ -926,21 +1043,25 @@ class VideoProcessor:
             try:
                 # Convert BGR to RGB for MediaPipe
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = self.face_mesh.process(rgb_frame)
                 
-                if results and hasattr(results, 'multi_face_landmarks') and results.multi_face_landmarks:
+                # Use Tasks API (FaceLandmarker)
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+                results = self.face_landmarker.detect(mp_image)
+                
+                if results and results.face_landmarks and len(results.face_landmarks) > 0:
                     face_detected = True
                     detection_method = "mediapipe"
-                    landmarks = results.multi_face_landmarks[0]
+                    # Get first face's landmarks (list of NormalizedLandmark)
+                    landmarks = results.face_landmarks[0]
                     
-                    # Calculate EAR for both eyes
-                    left_ear = self.calculate_ear(landmarks, self.LEFT_EYE_POINTS)
-                    right_ear = self.calculate_ear(landmarks, self.RIGHT_EYE_POINTS)
+                    # Calculate EAR for both eyes using Tasks API format
+                    left_ear = self.calculate_ear_tasks(landmarks, self.LEFT_EYE_POINTS, frame.shape)
+                    right_ear = self.calculate_ear_tasks(landmarks, self.RIGHT_EYE_POINTS, frame.shape)
                     ear_value = (left_ear + right_ear) / 2.0
                     confidence = 0.85
                     
-                    # Estimate head pose
-                    head_pose = self.estimate_head_pose(landmarks, frame.shape)
+                    # Estimate head pose using Tasks API format
+                    head_pose = self.estimate_head_pose_tasks(landmarks, frame.shape)
                     self.head_pose_history.append(head_pose)
                     
                     # Detect blink

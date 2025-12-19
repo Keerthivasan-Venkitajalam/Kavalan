@@ -66,7 +66,7 @@ class StreamConfig:
     """Configuration for Gemini Live streaming"""
     audio_sample_rate: int = 16000  # 16kHz PCM
     audio_channels: int = 1  # Mono
-    video_fps: float = 15.0  # Increased to 15 FPS for real-time detection
+    video_fps: float = 30.0  # Increased to 30 FPS for full real-time detection
     video_max_dimension: int = 640  # Max width/height
     response_modalities: List[str] = field(default_factory=lambda: ["TEXT"])
     
@@ -311,7 +311,7 @@ Be concise. Respond quickly. Every second counts in preventing financial fraud."
             
             # Encode to JPEG
             buffer = io.BytesIO()
-            pil_image.save(buffer, format='JPEG', quality=60)  # Lower quality for speed
+            pil_image.save(buffer, format='JPEG', quality=50)  # Lower quality for maximum speed
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:

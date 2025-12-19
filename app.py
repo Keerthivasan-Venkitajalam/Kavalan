@@ -404,24 +404,29 @@ class KavalanApp:
                 cv2.putText(img, f"Detection: {liveness_result.detection_method}", 
                            (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, method_color, 1)
                 
-                # Blink rate
-                cv2.putText(img, f"Blinks/min: {liveness_result.blinks_per_minute:.1f}", 
+                # Blink rate - show actual count
+                blink_text = f"Blinks/min: {liveness_result.blinks_per_minute:.1f}"
+                cv2.putText(img, blink_text, 
                            (10, 45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                 
-                # Face detection status
+                # EAR value for debugging
+                cv2.putText(img, f"EAR: {liveness_result.ear_value:.3f}", 
+                           (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+                
+                # Face detection status - use ASCII only
                 face_color = (0, 255, 0) if liveness_result.face_detected else (0, 0, 255)
-                face_text = "Face: ✓" if liveness_result.face_detected else "Face: ✗"
-                cv2.putText(img, face_text, (10, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_color, 1)
+                face_text = "Face: YES" if liveness_result.face_detected else "Face: NO"
+                cv2.putText(img, face_text, (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_color, 1)
                 
                 # Stress indicator (if distressed)
                 if liveness_result.is_distressed:
                     cv2.putText(img, f"Stress: {liveness_result.stress_level.upper()}", 
-                               (10, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
+                               (10, 105), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 165, 255), 1)
                 
-                # Spoof warning
+                # Spoof warning - use ASCII only
                 if liveness_result.is_static_spoof:
-                    cv2.putText(img, "⚠ SPOOF DETECTED", 
-                               (width//2 - 80, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                    cv2.putText(img, "WARNING: SPOOF DETECTED", 
+                               (width//2 - 120, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             
             # Draw current fusion score
             fusion_result = st.session_state.get('current_fusion_result')

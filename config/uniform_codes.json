@@ -1,0 +1,176 @@
+{
+  "metadata": {
+    "description": "Official Indian Law Enforcement Uniform Codes for Scam Detection",
+    "version": "1.0.0",
+    "last_updated": "2025-12-20",
+    "purpose": "RAG-augmented verification to detect fake police/CBI uniforms"
+  },
+  "agencies": {
+    "CBI": {
+      "full_name": "Central Bureau of Investigation",
+      "uniform_type": "formal_business",
+      "description": "CBI officers typically wear formal business attire (suits/blazers) during investigations and interrogations. They do NOT wear khaki uniforms.",
+      "key_facts": [
+        "CBI officers wear formal suits or business attire, NOT khaki uniforms",
+        "CBI does NOT conduct arrests via video calls",
+        "CBI does NOT demand money during investigations",
+        "CBI officers do not wear peaked caps during interrogations"
+      ],
+      "scam_indicators": [
+        "Person wearing khaki uniform claiming to be CBI",
+        "Person wearing police-style peaked cap claiming to be CBI",
+        "Video call 'interrogation' - CBI does not do this",
+        "Demanding fund transfer for 'verification'"
+      ],
+      "badge_details": null,
+      "cap_details": null
+    },
+    "ED": {
+      "full_name": "Enforcement Directorate",
+      "uniform_type": "formal_business",
+      "description": "ED officers wear formal business attire. They are financial investigation officers, NOT uniformed police.",
+      "key_facts": [
+        "ED officers wear formal business suits",
+        "ED does NOT conduct arrests via video calls",
+        "ED does NOT demand immediate money transfers",
+        "ED investigations follow proper legal procedures with written notices"
+      ],
+      "scam_indicators": [
+        "Person in uniform claiming to be ED",
+        "Demanding immediate fund transfer",
+        "Threatening 'Digital Arrest'",
+        "Video call 'custody'"
+      ],
+      "badge_details": null,
+      "cap_details": null
+    },
+    "IPS": {
+      "full_name": "Indian Police Service",
+      "uniform_type": "khaki_uniform",
+      "description": "IPS officers wear khaki uniforms with specific badges and insignia.",
+      "key_facts": [
+        "IPS badge must have Ashoka Emblem (four lions)",
+        "IPS badge must have star and 'IPS' text",
+        "Peak cap is formal with specific crest, NOT baseball cap",
+        "Lanyard color varies by rank (Navy Blue for IPS, Khaki for others)"
+      ],
+      "badge_details": {
+        "required_elements": ["Ashoka Emblem", "Star", "IPS text"],
+        "placement": "shoulder",
+        "common_fakes": ["Generic 'POLICE' text only", "Missing Ashoka Emblem", "State initials mixed with IPS stars"]
+      },
+      "cap_details": {
+        "type": "formal_peak_cap",
+        "scam_variants": ["Baseball cap with POLICE embroidery", "Sports cap worn indoors", "Beret without justification"]
+      },
+      "collar_tabs": {
+        "description": "Gorget patches - dark blue with leaf structure for high-rank IPS",
+        "scam_variants": ["Missing gorget patches", "Generic patches"]
+      },
+      "scam_indicators": [
+        "Baseball/sports cap instead of formal peak cap",
+        "Missing IPS text on badge",
+        "Generic 'POLICE' badge only",
+        "Wrong lanyard color for claimed rank",
+        "Video call 'arrest' - police cannot arrest via video"
+      ]
+    },
+    "NCB": {
+      "full_name": "Narcotics Control Bureau",
+      "uniform_type": "mixed",
+      "description": "NCB officers may wear formal attire or specific NCB uniforms during raids.",
+      "key_facts": [
+        "NCB does NOT conduct arrests via WhatsApp/Skype",
+        "NCB follows proper legal procedures with physical summons",
+        "NCB does NOT demand money for 'bail' or 'verification'",
+        "'Parcel with drugs' is a common scam narrative, not NCB procedure"
+      ],
+      "scam_indicators": [
+        "Video call claiming parcel interception",
+        "Demanding money to 'clear' drugs case",
+        "Threatening immediate arrest without physical summons",
+        "'Digital custody' claims"
+      ],
+      "badge_details": null,
+      "cap_details": null
+    },
+    "state_police": {
+      "full_name": "State Police Forces",
+      "uniform_type": "khaki_uniform",
+      "description": "State police wear khaki with state-specific badges and insignia.",
+      "key_facts": [
+        "Badge shows state name or initials (MP, DL, MH, etc.)",
+        "Different lanyard colors by state",
+        "Cannot arrest via video call",
+        "Must issue Section 41A notice for arrests"
+      ],
+      "badge_details": {
+        "required_elements": ["State emblem or initials", "Rank insignia"],
+        "common_fakes": ["Generic 'POLICE' without state identifier", "Wrong state badge for claimed location"]
+      },
+      "scam_indicators": [
+        "Claiming to be from distant state police via video",
+        "No physical summons or notice",
+        "Demanding money transfer"
+      ]
+    }
+  },
+  "universal_scam_indicators": {
+    "legal_facts": [
+      "Indian police CANNOT arrest anyone via video call",
+      "'Digital Arrest' is NOT a legal concept in India",
+      "No agency can demand money during investigation",
+      "All summons must be in writing (Section 41A CrPC)",
+      "Judicial proceedings do NOT happen on mobile video calls",
+      "No 'supervision account' concept exists in Indian law"
+    ],
+    "visual_red_flags": [
+      "Static/frozen background (green screen)",
+      "Unnatural lighting or color saturation",
+      "Baseball cap with formal uniform",
+      "Blurry or printed ID card without holograms",
+      "Mismatched uniform elements",
+      "Person in kitchen/bedroom claiming to be at police station"
+    ],
+    "audio_red_flags": {
+      "authority_keywords": ["CBI", "NCB", "ED", "RBI", "Supreme Court", "Narcotics Control Bureau", "Enforcement Directorate"],
+      "coercion_keywords": ["Digital Arrest", "Do not disconnect", "Keep camera on", "Don't tell family", "Don't call anyone", "Virtual custody"],
+      "financial_keywords": ["Supervision account", "Verification transfer", "Refundable", "Asset verification", "Secret audit", "RBI clearance"],
+      "threat_keywords": ["Non-bailable warrant", "Immediate arrest", "75 lakh", "Money laundering", "MDMA", "Drugs parcel", "Human trafficking"]
+    }
+  },
+  "detection_rules": {
+    "critical_combinations": [
+      {
+        "name": "CBI_khaki_scam",
+        "conditions": ["uniform_detected", "agency_claimed == 'CBI'", "uniform_type == 'khaki'"],
+        "score_boost": 3.0,
+        "message": "FAKE: CBI officers wear business suits, NOT khaki uniforms"
+      },
+      {
+        "name": "video_arrest_scam",
+        "conditions": ["video_call", "arrest_threat_detected", "money_demand_detected"],
+        "score_boost": 4.0,
+        "message": "SCAM: No Indian agency conducts arrests via video call"
+      },
+      {
+        "name": "digital_arrest_keyword",
+        "conditions": ["keyword_detected == 'digital arrest'"],
+        "score_boost": 5.0,
+        "message": "CONFIRMED SCAM: 'Digital Arrest' is illegal and does not exist"
+      },
+      {
+        "name": "baseball_cap_officer",
+        "conditions": ["uniform_detected", "cap_type == 'baseball'"],
+        "score_boost": 2.5,
+        "message": "SUSPICIOUS: Real officers wear formal peak caps, not baseball caps"
+      },
+      {
+        "name": "money_demand_during_investigation",
+        "conditions": ["authority_claimed", "financial_demand_detected"],
+        "score_boost": 4.0,
+        "message": "SCAM: No legitimate agency demands money during investigation"
+      }
+    ]
+  }
+}
