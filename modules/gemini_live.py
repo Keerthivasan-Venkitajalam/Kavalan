@@ -5,7 +5,7 @@ Real-time multimodal streaming via WebSocket for sub-second latency scam detecti
 Key Features:
 - WebSocket-based bidirectional streaming (vs REST API)
 - Native PCM audio ingestion (eliminates Whisper dependency)  
-- Continuous video frame streaming at 1 FPS
+- Continuous video frame streaming (configurable FPS)
 - "Barge-in" capability for immediate threat response
 - Stateful session with rolling context
 """
@@ -66,7 +66,7 @@ class StreamConfig:
     """Configuration for Gemini Live streaming"""
     audio_sample_rate: int = 16000  # 16kHz PCM
     audio_channels: int = 1  # Mono
-    video_fps: float = 1.0  # 1 frame per second
+    video_fps: float = 15.0  # Increased to 15 FPS for real-time detection
     video_max_dimension: int = 640  # Max width/height
     response_modalities: List[str] = field(default_factory=lambda: ["TEXT"])
     
@@ -306,11 +306,12 @@ Be concise. Respond quickly. Every second counts in preventing financial fraud."
             if max(pil_image.size) > max_dim:
                 ratio = max_dim / max(pil_image.size)
                 new_size = tuple(int(dim * ratio) for dim in pil_image.size)
-                pil_image = pil_image.resize(new_size, Image.Resampling.LANCZOS)
+                # Use BILINEAR instead of LANCZOS for faster processing
+                pil_image = pil_image.resize(new_size, Image.Resampling.BILINEAR)
             
             # Encode to JPEG
             buffer = io.BytesIO()
-            pil_image.save(buffer, format='JPEG', quality=70)  # Lower quality for speed
+            pil_image.save(buffer, format='JPEG', quality=60)  # Lower quality for speed
             return base64.b64encode(buffer.getvalue()).decode('utf-8')
             
         except Exception as e:
@@ -380,7 +381,7 @@ Be concise. Respond quickly. Every second counts in preventing financial fraud."
         if self.state != ConnectionState.CONNECTED:
             return
         
-        # Rate limit frame sending (1 FPS)
+        # Rate limit frame sending based on config
         current_time = time.time()
         if current_time - self._last_frame_time < (1.0 / self.config.video_fps):
             return
