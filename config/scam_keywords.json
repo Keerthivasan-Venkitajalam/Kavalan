@@ -1,0 +1,31 @@
+{
+    "authority": [
+        "CBI", "NCB", "RBI", "Supreme Court", "Narcotics", "ED", "Cyber Police",
+        "Central Bureau of Investigation", "Enforcement Directorate", 
+        "Reserve Bank of India", "Cyber Crime", "Police Commissioner",
+        "DCP", "ACP", "Inspector", "Sub Inspector", "Constable"
+    ],
+    "coercion": [
+        "Do not disconnect", "Keep camera on", "Don't tell family", 
+        "Stay on call", "Digital arrest", "Don't inform anyone",
+        "Keep this confidential", "Secret investigation", "Under surveillance",
+        "Don't leave the room", "Stay online", "Continuous monitoring"
+    ],
+    "financial": [
+        "Supervision Account", "Asset Verification", "Secret Audit", 
+        "Transfer money", "Refundable", "Security deposit", "Verification amount",
+        "Temporary hold", "Account freezing", "Asset seizure", "Bank details",
+        "Account number", "IFSC code", "UPI ID", "Net banking"
+    ],
+    "crime": [
+        "Money Laundering", "Drugs", "Human Trafficking", "MDMA", 
+        "Parcel intercepted", "Illegal activities", "Criminal charges",
+        "Arrest warrant", "Court summons", "Legal action", "Investigation",
+        "Evidence found", "Suspicious transaction", "Fraud case"
+    ],
+    "urgency": [
+        "Immediate action required", "Within 24 hours", "Time sensitive",
+        "Urgent matter", "Cannot delay", "Act now", "Emergency",
+        "Critical situation", "Last chance", "Final warning"
+    ]
+}

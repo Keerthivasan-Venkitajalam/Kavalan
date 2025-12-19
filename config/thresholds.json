@@ -1,0 +1,25 @@
+{
+    "alert_threshold": 8.0,
+    "visual_weight": 0.4,
+    "liveness_weight": 0.3,
+    "audio_weight": 0.3,
+    "min_blinks_per_minute": 10,
+    "ear_threshold": 0.25,
+    "frame_sample_interval": 2.0,
+    "audio_chunk_duration": 5.0,
+    "max_transcript_length": 1000,
+    "keyword_score_multipliers": {
+        "authority": 2.0,
+        "coercion": 2.5,
+        "financial": 3.0,
+        "crime": 2.0,
+        "urgency": 1.5
+    },
+    "visual_anomaly_scores": {
+        "wrong_badge": 3.0,
+        "baseball_cap": 2.5,
+        "static_background": 2.0,
+        "green_screen_halo": 3.5,
+        "generic_uniform": 2.0
+    }
+}

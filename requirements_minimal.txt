@@ -1,0 +1,18 @@
+# Minimal requirements for Kavalan Lite
+# Core dependencies only - system will work in mock mode without optional deps
+
+# Essential for Streamlit app
+streamlit>=1.29.0
+streamlit-webrtc>=0.47.1
+typing-extensions>=4.0.0
+numpy>=1.24.0
+pillow>=10.0.0
+python-dotenv>=1.0.0
+pandas>=2.0.0
+
+# Computer vision (optional - will use mock mode if missing)
+opencv-python-headless>=4.8.0
+
+# Testing
+pytest>=7.4.0
+hypothesis>=6.88.0
