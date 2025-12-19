@@ -300,6 +300,16 @@ class KavalanApp:
     def update_fusion_score(self):
         """Update fusion score based on latest results with context awareness"""
         try:
+            # Ensure session state variables are initialized (thread-safe check)
+            if not hasattr(st.session_state, 'coercion_history') or st.session_state.coercion_history is None:
+                st.session_state.coercion_history = []
+            if not hasattr(st.session_state, 'scores_history') or st.session_state.scores_history is None:
+                st.session_state.scores_history = []
+            if not hasattr(st.session_state, 'alerts_count'):
+                st.session_state.alerts_count = 0
+            if not hasattr(st.session_state, 'threat_explanations'):
+                st.session_state.threat_explanations = []
+            
             # Get latest results from session state
             liveness_result = getattr(st.session_state, 'last_liveness', None)
             visual_result = getattr(st.session_state, 'last_visual', None)

@@ -2,7 +2,7 @@
 Video Processor module for Kavalan Lite
 Handles liveness detection using MediaPipe Face Mesh and Eye Aspect Ratio (EAR)
 Also handles visual analysis via Gemini API
-Enhanced with: Head Pose Variance, Stress Detection, Privacy Redaction, OpenCV Fallback
+Enhanced with: Head Pose Variance, Stress Detection, Privacy Redaction, Multi-Fallback Detection
 """
 
 import cv2
@@ -17,6 +17,8 @@ import base64
 from PIL import Image
 import io
 from pathlib import Path
+import urllib.request
+import os
 
 # Try to import MediaPipe, but make it optional for testing
 try:
@@ -151,11 +153,13 @@ class VideoProcessor:
         self.detection_method = "none"
         self._init_mediapipe()
         
-        # OpenCV fallback detectors
+        # OpenCV fallback detectors (Haar cascade + DNN)
         self.face_cascade = None
         self.eye_cascade = None
+        self.dnn_face_detector = None
         if self.face_mesh is None:
             self._init_opencv_fallback()
+            self._init_dnn_face_detector()
         
         # Blink tracking
         self.blink_history = deque(maxlen=100)  # Store last 100 blinks with timestamps
@@ -194,6 +198,38 @@ class VideoProcessor:
         
         logger.info(f"VideoProcessor initialized - Detection: {self.detection_method}, EAR: {self.ear_threshold}")
     
+    def _init_dnn_face_detector(self):
+        """Initialize OpenCV DNN-based face detector (more accurate than Haar)"""
+        try:
+            # Use OpenCV's built-in DNN face detector (Caffe model)
+            model_dir = Path(__file__).parent.parent / 'models'
+            model_dir.mkdir(exist_ok=True)
+            
+            prototxt_path = model_dir / 'deploy.prototxt'
+            caffemodel_path = model_dir / 'res10_300x300_ssd_iter_140000.caffemodel'
+            
+            # Download models if not present
+            if not prototxt_path.exists():
+                logger.info("Downloading DNN face detector prototxt...")
+                prototxt_url = "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt"
+                urllib.request.urlretrieve(prototxt_url, str(prototxt_path))
+            
+            if not caffemodel_path.exists():
+                logger.info("Downloading DNN face detector model (10MB)...")
+                caffemodel_url = "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel"
+                urllib.request.urlretrieve(caffemodel_url, str(caffemodel_path))
+            
+            if prototxt_path.exists() and caffemodel_path.exists():
+                self.dnn_face_detector = cv2.dnn.readNetFromCaffe(
+                    str(prototxt_path), 
+                    str(caffemodel_path)
+                )
+                logger.info("OpenCV DNN face detector initialized")
+            
+        except Exception as e:
+            logger.warning(f"DNN face detector initialization failed: {e}")
+            self.dnn_face_detector = None
+
     def _init_mediapipe(self):
         """Initialize MediaPipe Face Mesh and Selfie Segmentation"""
         if not MEDIAPIPE_AVAILABLE:
@@ -229,21 +265,42 @@ class VideoProcessor:
     def _init_opencv_fallback(self):
         """Initialize OpenCV Haar Cascades as fallback for face detection"""
         try:
-            self.face_cascade = cv2.CascadeClassifier(HAAR_CASCADE_FACE)
-            self.eye_cascade = cv2.CascadeClassifier(HAAR_CASCADE_EYE)
+            # Try multiple cascade files for better detection
+            cascade_options = [
+                cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml',  # Better for varying lighting
+                cv2.data.haarcascades + 'haarcascade_frontalface_alt.xml',
+                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml',
+            ]
             
-            if self.face_cascade.empty():
-                raise Exception("Failed to load face cascade")
+            self.face_cascade = None
+            for cascade_path in cascade_options:
+                cascade = cv2.CascadeClassifier(cascade_path)
+                if not cascade.empty():
+                    self.face_cascade = cascade
+                    logger.info(f"Loaded cascade: {cascade_path}")
+                    break
+            
+            if self.face_cascade is None:
+                raise Exception("Failed to load any face cascade")
+            
+            # Also load profile face for side views
+            self.profile_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + 'haarcascade_profileface.xml'
+            )
+            
+            self.eye_cascade = cv2.CascadeClassifier(HAAR_CASCADE_EYE)
             if self.eye_cascade.empty():
-                raise Exception("Failed to load eye cascade")
+                logger.warning("Eye cascade failed to load, will use face-only detection")
+                self.eye_cascade = None
                 
             self.detection_method = "opencv"
-            logger.info("OpenCV Haar Cascades initialized as fallback")
+            logger.info("OpenCV Haar Cascades initialized as fallback (enhanced)")
             
         except Exception as e:
             logger.error(f"OpenCV fallback initialization failed: {e}")
             self.face_cascade = None
             self.eye_cascade = None
+            self.profile_cascade = None
     
     def _load_uniform_codes(self) -> Dict:
         """Load official uniform codes for RAG-based forensic verification"""
@@ -522,11 +579,20 @@ class VideoProcessor:
         # 1. No blinks (or very few) over extended period
         # 2. Head pose variance near zero (perfectly still)
         
+        # Need enough frames to make reliable decision (5 seconds at 30fps = 150 frames)
+        if self.frame_count < 150:
+            return False
+        
+        # Need at least some head pose data
+        if len(self.head_pose_history) < 20:
+            return False
+        
         no_blinks = blinks_per_minute < 3  # Almost no blinks
         static_pose = head_pose_variance < self.head_pose_static_threshold
         
         # Both conditions = high confidence spoof
-        if no_blinks and static_pose and self.frame_count > 90:  # 3 seconds at 30fps
+        if no_blinks and static_pose:
+            logger.warning("STATIC SPOOF DETECTED: Possible looped video or deepfake")
             return True
         
         return False
@@ -574,7 +640,7 @@ class VideoProcessor:
     
     def process_with_opencv_fallback(self, frame: np.ndarray) -> Tuple[bool, float, float]:
         """
-        Fallback face detection using OpenCV Haar Cascades
+        Fallback face detection using OpenCV Haar Cascades with enhanced detection
         
         Args:
             frame: Input BGR frame
@@ -588,43 +654,145 @@ class VideoProcessor:
         try:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             
-            # Detect faces
+            # Apply histogram equalization for better detection in varying lighting
+            gray_eq = cv2.equalizeHist(gray)
+            
+            # Try frontal face detection with lenient parameters
             faces = self.face_cascade.detectMultiScale(
-                gray, 
-                scaleFactor=1.1, 
-                minNeighbors=5,
-                minSize=(30, 30)
+                gray_eq, 
+                scaleFactor=1.05,  # More sensitive (was 1.1)
+                minNeighbors=3,    # Less strict (was 5)
+                minSize=(20, 20), # Smaller minimum (was 30, 30)
+                flags=cv2.CASCADE_SCALE_IMAGE
             )
             
+            # If no frontal face found, try profile face
+            if len(faces) == 0 and hasattr(self, 'profile_cascade') and self.profile_cascade is not None:
+                faces = self.profile_cascade.detectMultiScale(
+                    gray_eq,
+                    scaleFactor=1.05,
+                    minNeighbors=3,
+                    minSize=(20, 20)
+                )
+            
+            # Also try on original gray without equalization
+            if len(faces) == 0:
+                faces = self.face_cascade.detectMultiScale(
+                    gray, 
+                    scaleFactor=1.05,
+                    minNeighbors=3,
+                    minSize=(20, 20),
+                    flags=cv2.CASCADE_SCALE_IMAGE
+                )
+            
             if len(faces) > 0:
-                # Get largest face
-                face = max(faces, key=lambda f: f[2] * f[3])
+                # Get largest face (filter out small false positives)
+                valid_faces = [f for f in faces if f[2] > 50 and f[3] > 50]  # Width/height > 50
+                if not valid_faces:
+                    valid_faces = faces
+                
+                face = max(valid_faces, key=lambda f: f[2] * f[3])
                 x, y, w, h = face
                 
-                # Extract face region for eye detection
-                face_roi = gray[y:y+h, x:x+w]
+                # Log detection for debugging
+                logger.debug(f"OpenCV detected face at ({x}, {y}) size ({w}x{h})")
                 
-                # Detect eyes within face
-                eyes = self.eye_cascade.detectMultiScale(face_roi, scaleFactor=1.1, minNeighbors=5)
+                ear_estimate = 0.28  # Default open eyes estimate
+                confidence = 0.7
                 
-                # Estimate EAR based on eye detection (rough approximation)
-                if len(eyes) >= 2:
-                    # Eyes detected - likely open
-                    ear_estimate = 0.3
-                elif len(eyes) == 1:
-                    # One eye detected - partially closed or profile
-                    ear_estimate = 0.2
-                else:
-                    # No eyes detected - possibly closed or occluded
-                    ear_estimate = 0.15
+                # Try eye detection if cascade available
+                if self.eye_cascade is not None:
+                    # Extract face region for eye detection
+                    face_roi = gray_eq[y:y+h, x:x+w]
+                    
+                    # Only search upper half of face for eyes
+                    upper_face = face_roi[0:int(h*0.6), :]
+                    
+                    eyes = self.eye_cascade.detectMultiScale(
+                        upper_face, 
+                        scaleFactor=1.1, 
+                        minNeighbors=3,
+                        minSize=(15, 15)
+                    )
+                    
+                    # Estimate EAR based on eye detection
+                    if len(eyes) >= 2:
+                        # Both eyes detected - likely open
+                        ear_estimate = 0.32
+                        confidence = 0.8
+                    elif len(eyes) == 1:
+                        # One eye detected - partially closed or profile
+                        ear_estimate = 0.22
+                        confidence = 0.65
+                    else:
+                        # No eyes detected - possibly closed or occluded
+                        ear_estimate = 0.15
+                        confidence = 0.5
                 
-                return True, ear_estimate, 0.6
+                return True, ear_estimate, confidence
             
         except Exception as e:
-            logger.debug(f"OpenCV fallback detection failed: {e}")
+            logger.error(f"OpenCV fallback detection failed: {e}")
         
         return False, 0.0, 0.0
     
+    def process_with_dnn_fallback(self, frame: np.ndarray) -> Tuple[bool, float, float, Tuple[int, int, int, int]]:
+        """
+        DNN-based face detection (most accurate fallback)
+        
+        Args:
+            frame: Input BGR frame
+            
+        Returns:
+            Tuple of (face_detected, approximate_ear, confidence, face_box)
+        """
+        if self.dnn_face_detector is None:
+            return False, 0.0, 0.0, (0, 0, 0, 0)
+        
+        try:
+            h, w = frame.shape[:2]
+            
+            # Prepare blob for DNN
+            blob = cv2.dnn.blobFromImage(
+                cv2.resize(frame, (300, 300)), 
+                1.0, 
+                (300, 300), 
+                (104.0, 177.0, 123.0)  # Mean subtraction values
+            )
+            
+            self.dnn_face_detector.setInput(blob)
+            detections = self.dnn_face_detector.forward()
+            
+            best_detection = None
+            best_confidence = 0.0
+            
+            # Find best detection above threshold
+            for i in range(detections.shape[2]):
+                confidence = detections[0, 0, i, 2]
+                if confidence > 0.5:  # Confidence threshold
+                    if confidence > best_confidence:
+                        best_confidence = confidence
+                        box = detections[0, 0, i, 3:7] * np.array([w, h, w, h])
+                        best_detection = box.astype("int")
+            
+            if best_detection is not None:
+                x1, y1, x2, y2 = best_detection
+                face_width = x2 - x1
+                face_height = y2 - y1
+                
+                if face_width > 30 and face_height > 30:
+                    logger.debug(f"DNN detected face with confidence {best_confidence:.2f}")
+                    
+                    # Estimate EAR (DNN doesn't give us eye info)
+                    ear_estimate = 0.28  # Default open eyes
+                    
+                    return True, ear_estimate, float(best_confidence), (x1, y1, face_width, face_height)
+            
+        except Exception as e:
+            logger.debug(f"DNN face detection failed: {e}")
+        
+        return False, 0.0, 0.0, (0, 0, 0, 0)
+
     def calculate_blink_rate(self) -> Tuple[int, float]:
         """
         Calculate blink rate over the last minute
@@ -678,12 +846,12 @@ class VideoProcessor:
         if self.detect_static_spoof(blinks_per_minute, head_pose_variance):
             score += 9.0  # Critical - likely fake
             is_suspicious = True
-            logger.warning("STATIC SPOOF DETECTED: Possible looped video or deepfake")
+            # Log already done in detect_static_spoof
         else:
-            # Normal blink rate check
-            if blinks_per_minute < self.min_blinks_per_minute:
+            # Normal blink rate check (only after enough time has passed)
+            if self.frame_count > 150 and blinks_per_minute < self.min_blinks_per_minute:
                 # Too few blinks - possible deepfake or static image
-                score += 6.0
+                score += 4.0  # Reduced from 6.0 - allow time to blink
                 is_suspicious = True
             elif blinks_per_minute > 40:
                 # Too many blinks - possible nervousness or manipulation
@@ -781,13 +949,21 @@ class VideoProcessor:
             except Exception as e:
                 logger.error(f"MediaPipe processing failed: {e}")
         
-        # Fallback to OpenCV if MediaPipe didn't detect a face
+        # Fallback 1: OpenCV Haar Cascades
         if not face_detected and self.face_cascade is not None:
             face_detected, ear_value, confidence = self.process_with_opencv_fallback(frame)
             if face_detected:
-                detection_method = "opencv"
-                # Still try to detect blink with estimated EAR
+                detection_method = "opencv_haar"
                 self.detect_blink(ear_value)
+                logger.debug("Face detected via OpenCV Haar Cascade")
+        
+        # Fallback 2: OpenCV DNN (most robust)
+        if not face_detected and self.dnn_face_detector is not None:
+            face_detected, ear_value, confidence, face_box = self.process_with_dnn_fallback(frame)
+            if face_detected:
+                detection_method = "opencv_dnn"
+                self.detect_blink(ear_value)
+                logger.debug("Face detected via OpenCV DNN")
         
         # Calculate head pose variance
         head_pose_variance = self.calculate_head_pose_variance()
