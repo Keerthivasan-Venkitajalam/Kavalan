@@ -118,4 +118,6 @@ dmypy.json
 logs/
 database/
 IMPLEMENTATION_COMPLETE.md
-DEPLOYMENT_SUCCESS.md
+DEPLOYMENT_SUCCESS.md# Credentials (DO NOT COMMIT)
+config/vertex-ai-credentials.json
+*.json.bak

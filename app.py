@@ -30,6 +30,11 @@ from modules.audio_processor import AudioProcessor
 from modules.fusion import FusionEngine, ThreatContext
 from modules.reporter import Reporter
 from modules.evidence_logger import EvidenceLogger
+from modules.mcp_contexts import (
+    create_visual_context,
+    create_audio_context,
+    create_fusion_context,
+)
 
 # Load environment variables
 load_dotenv()
@@ -213,7 +218,11 @@ class KavalanApp:
             'threat_explanations': [],
             'detection_status': {},
             'session_start_time': datetime.now(),
-            'evidence_committed': False
+            'evidence_committed': False,
+            'audio_buffer': [],  # Buffer for accumulating audio chunks
+            'audio_buffer_duration': 0.0,  # Track buffered audio duration
+            'last_audio_process_time': 0.0,  # Rate limit audio processing
+            'auto_refresh': True,  # Auto-refresh UI to sync with WebRTC thread
         }
         
         for key, default in defaults.items():
@@ -270,26 +279,69 @@ class KavalanApp:
             return frame
     
     def audio_frame_callback(self, frame: av.AudioFrame) -> av.AudioFrame:
-        """Process audio frames from WebRTC stream"""
+        """Process audio frames from WebRTC stream with buffering for Whisper"""
         try:
             # Convert audio frame to numpy array
             audio_array = frame.to_ndarray()
             
             # Flatten if stereo
             if len(audio_array.shape) > 1:
-                audio_array = audio_array.mean(axis=1)
+                audio_array = audio_array.mean(axis=0)  # Fix: axis=0 for proper channel averaging
             
-            # Process audio
-            audio_result = self.audio_processor.process_audio(audio_array, frame.sample_rate)
+            # Ensure float32 for Whisper
+            audio_array = audio_array.astype(np.float32)
             
-            # Store results in session state
-            if audio_result:
-                st.session_state.last_audio = audio_result
-                if audio_result.transcript:
-                    st.session_state.last_transcript = audio_result.transcript
+            # Normalize to [-1, 1] if needed
+            if np.abs(audio_array).max() > 1.0:
+                audio_array = audio_array / 32768.0  # Convert from int16 range
             
-            # Update fusion score
-            self.update_fusion_score()
+            sample_rate = frame.sample_rate
+            chunk_duration = len(audio_array) / sample_rate
+            
+            # Initialize buffer if needed
+            if not hasattr(st.session_state, 'audio_buffer') or st.session_state.audio_buffer is None:
+                st.session_state.audio_buffer = []
+                st.session_state.audio_buffer_duration = 0.0
+                st.session_state.last_audio_process_time = 0.0
+            
+            # Add to buffer
+            st.session_state.audio_buffer.append(audio_array)
+            st.session_state.audio_buffer_duration += chunk_duration
+            
+            # Process when we have ~3 seconds of audio (Whisper needs substantial chunks)
+            current_time = time.time()
+            min_buffer_duration = 3.0  # seconds
+            min_process_interval = 2.0  # Don't process more often than every 2s
+            
+            time_since_last = current_time - st.session_state.last_audio_process_time
+            
+            if (st.session_state.audio_buffer_duration >= min_buffer_duration and 
+                time_since_last >= min_process_interval):
+                
+                # Concatenate all buffered audio
+                full_audio = np.concatenate(st.session_state.audio_buffer)
+                
+                # Clear buffer
+                st.session_state.audio_buffer = []
+                st.session_state.audio_buffer_duration = 0.0
+                st.session_state.last_audio_process_time = current_time
+                
+                # Process the accumulated audio
+                audio_result = self.audio_processor.process_audio(full_audio, sample_rate)
+                
+                # Store results in session state
+                if audio_result:
+                    st.session_state.last_audio = audio_result
+                    if audio_result.transcript:
+                        st.session_state.last_transcript = audio_result.transcript
+                        logger.info(f"Transcribed: {audio_result.transcript[:100]}...")
+                    
+                    # Log detected keywords
+                    if audio_result.detected_keywords:
+                        logger.warning(f"Keywords detected: {audio_result.detected_keywords}")
+                
+                # Update fusion score
+                self.update_fusion_score()
             
             return frame
             
@@ -298,7 +350,7 @@ class KavalanApp:
             return frame
     
     def update_fusion_score(self):
-        """Update fusion score based on latest results with context awareness"""
+        """Update fusion score based on latest results with MCP context separation"""
         try:
             # Ensure session state variables are initialized (thread-safe check)
             if not hasattr(st.session_state, 'coercion_history') or st.session_state.coercion_history is None:
@@ -315,31 +367,13 @@ class KavalanApp:
             visual_result = getattr(st.session_state, 'last_visual', None)
             audio_result = getattr(st.session_state, 'last_audio', None)
             
-            # Use default scores if results not available
-            liveness_score = liveness_result.score if liveness_result else 0.0
-            visual_score = visual_result.score if visual_result else 0.0
-            audio_score = audio_result.score if audio_result else 0.0
+            # Build MCP contexts from processor outputs
+            visual_context = create_visual_context(visual_result)
+            audio_context = create_audio_context(audio_result)
+            fusion_context = create_fusion_context(visual_context, audio_context, liveness_result)
             
-            # Build threat context for enhanced fusion
-            context = ThreatContext(
-                uniform_detected=visual_result.uniform_detected if visual_result else False,
-                uniform_is_fake=visual_result.is_verified_fake if visual_result else False,
-                agency_claimed=visual_result.uniform_agency_claimed if visual_result else "",
-                coercion_detected=bool(audio_result and audio_result.detected_keywords.get('coercion')),
-                financial_demand=bool(audio_result and audio_result.detected_keywords.get('financial')),
-                authority_claim=bool(audio_result and audio_result.detected_keywords.get('authority')),
-                user_stress_level=liveness_result.stress_level if liveness_result else "normal",
-                is_static_spoof=liveness_result.is_static_spoof if liveness_result else False,
-                transcript_keywords=list(audio_result.detected_keywords.keys()) if audio_result and audio_result.detected_keywords else []
-            )
-            
-            # Fuse scores with context
-            fusion_result = self.fusion_engine.fuse_scores(
-                visual=visual_score,
-                liveness=liveness_score,
-                audio=audio_score,
-                context=context
-            )
+            # Fuse scores using MCP context (auditable entry point)
+            fusion_result = self.fusion_engine.fuse_from_context(fusion_context)
             
             # Store in session state
             st.session_state.current_fusion_result = fusion_result
@@ -361,9 +395,9 @@ class KavalanApp:
             st.session_state.scores_history.append({
                 'timestamp': time.time(),
                 'final_score': fusion_result.final_score,
-                'visual': visual_score,
-                'liveness': liveness_score,
-                'audio': audio_score,
+                'visual': fusion_context.visual_context.visual_score,
+                'liveness': fusion_context.liveness_score,
+                'audio': fusion_context.audio_context.audio_score,
                 'is_alert': fusion_result.is_alert,
                 'alert_level': fusion_result.alert_level,
                 'threat_types': fusion_result.threat_types
@@ -380,7 +414,7 @@ class KavalanApp:
                 
                 # Log threat event to evidence logger
                 if hasattr(self, 'evidence_logger') and self.evidence_logger:
-                    transcript = st.session_state.get('last_transcript', '')
+                    transcript = fusion_context.audio_context.transcript_snippet
                     self.evidence_logger.record_threat(
                         threat_type=fusion_result.alert_level,
                         threat_score=fusion_result.final_score,
@@ -513,12 +547,16 @@ class KavalanApp:
         
         # Check processor status
         video_status = "🟢" if hasattr(self, 'video_processor') and self.video_processor.face_mesh else "🟡"
-        audio_status = "🟢" if hasattr(self, 'audio_processor') else "🔴"
+        whisper_status = "🟢" if hasattr(self, 'audio_processor') and self.audio_processor.whisper_model else "🔴"
         gemini_status = "🟢" if hasattr(self, 'video_processor') and self.video_processor.gemini_model else "🟡"
         
         st.sidebar.text(f"{video_status} MediaPipe")
-        st.sidebar.text(f"{audio_status} Audio Processing")
+        st.sidebar.text(f"{whisper_status} Whisper STT")
         st.sidebar.text(f"{gemini_status} Gemini AI")
+        
+        # Audio buffer status
+        buffer_duration = st.session_state.get('audio_buffer_duration', 0.0)
+        st.sidebar.text(f"🎙️ Audio buffer: {buffer_duration:.1f}s")
         
         # Session Statistics
         st.sidebar.markdown("---")
@@ -547,6 +585,14 @@ class KavalanApp:
         )
         st.session_state.stealth_mode = stealth_mode
         
+        # Auto-refresh toggle
+        auto_refresh = st.sidebar.toggle(
+            "🔄 Auto-Refresh UI",
+            value=st.session_state.get('auto_refresh', True),
+            help="Automatically refresh UI to show real-time detection status"
+        )
+        st.session_state.auto_refresh = auto_refresh
+        
         if st.sidebar.button("🔄 Reset Session"):
             st.session_state.scores_history = []
             st.session_state.alerts_count = 0
@@ -564,6 +610,61 @@ class KavalanApp:
                     st.sidebar.success(f"Report saved to: {report_path}")
                 else:
                     st.sidebar.warning("Could not generate report")
+        
+        # Demo/Test Mode - Inject test phrases
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("🧪 Demo Mode")
+        test_phrase = st.sidebar.text_input(
+            "Test phrase (simulates speech)",
+            placeholder="e.g., CBI officer, transfer money now",
+            help="Type scam phrases to test keyword detection without audio"
+        )
+        if st.sidebar.button("📝 Inject Test Phrase"):
+            if test_phrase:
+                # Process the test phrase through audio processor's keyword matching
+                self.audio_processor.transcript_buffer += " " + test_phrase
+                matches = self.audio_processor.match_keywords(test_phrase)
+                score = self.audio_processor.calculate_score(matches)
+                threat_level = self.audio_processor.determine_threat_level(score)
+                
+                # Create mock audio result
+                from modules.audio_processor import AudioResult
+                mock_result = AudioResult(
+                    score=score,
+                    transcript=test_phrase,
+                    detected_keywords=matches,
+                    threat_level=threat_level,
+                    confidence=1.0
+                )
+                st.session_state.last_audio = mock_result
+                st.session_state.last_transcript = self.audio_processor.transcript_buffer
+                
+                # Update fusion
+                self.update_fusion_score()
+                
+                st.sidebar.success(f"Injected! Score: {score:.1f}, Keywords: {list(matches.keys())}")
+                st.rerun()
+        
+        # Quick test buttons
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if st.button("🚨 Test High"):
+                test_text = "I am CBI officer. You are under digital arrest. Transfer money to verification account immediately. Do not disconnect this call."
+                self.audio_processor.transcript_buffer += " " + test_text
+                matches = self.audio_processor.match_keywords(test_text)
+                score = self.audio_processor.calculate_score(matches)
+                from modules.audio_processor import AudioResult
+                st.session_state.last_audio = AudioResult(score=score, transcript=test_text, detected_keywords=matches, threat_level="critical", confidence=1.0)
+                st.session_state.last_transcript = test_text
+                self.update_fusion_score()
+                st.rerun()
+        with col2:
+            if st.button("✅ Test Safe"):
+                st.session_state.last_audio = None
+                st.session_state.last_transcript = "Hello, how are you today?"
+                self.audio_processor.transcript_buffer = ""
+                self.update_fusion_score()
+                st.rerun()
         
         # Help Information
         st.sidebar.markdown("---")
@@ -712,6 +813,29 @@ class KavalanApp:
                 async_processing=True,
             )
             
+            # Auto-refresh placeholder to update UI with latest detection data
+            if webrtc_ctx.state.playing:
+                # Create a placeholder that updates automatically
+                status_placeholder = st.empty()
+                with status_placeholder.container():
+                    detection_status = st.session_state.get('detection_status', {})
+                    face_detected = detection_status.get('face_detected', False)
+                    method = detection_status.get('detection_method', 'none')
+                    stress = detection_status.get('stress_level', 'normal')
+                    
+                    cols = st.columns(3)
+                    with cols[0]:
+                        if face_detected:
+                            st.success(f"✅ Face: {method}")
+                        else:
+                            st.warning("⚠️ No Face")
+                    with cols[1]:
+                        fusion = st.session_state.get('current_fusion_result')
+                        if fusion:
+                            st.metric("Threat", f"{fusion.final_score:.1f}/10")
+                    with cols[2]:
+                        st.caption(f"Stress: {stress}")
+            
             # Coercion Level Meter (Lie Detector Graph)
             self.render_coercion_meter()
         
@@ -812,6 +936,11 @@ class KavalanApp:
             
             # Render main dashboard
             self.render_dashboard()
+            
+            # Auto-refresh toggle - helps sync WebRTC thread state with UI
+            if st.session_state.get('auto_refresh', False):
+                time.sleep(1)
+                st.rerun()
             
         except Exception as e:
             logger.error(f"Error running application: {e}")

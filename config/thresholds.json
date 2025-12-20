@@ -1,7 +1,7 @@
 {
-    "alert_threshold": 8.0,
-    "moderate_threshold": 5.0,
-    "critical_threshold": 9.0,
+    "alert_threshold": 6.0,
+    "moderate_threshold": 4.0,
+    "critical_threshold": 8.0,
     "visual_weight": 0.4,
     "liveness_weight": 0.3,
     "audio_weight": 0.3,

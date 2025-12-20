@@ -20,6 +20,9 @@ from pathlib import Path
 import urllib.request
 import os
 
+# Set up logger early so imports can use it
+logger = logging.getLogger(__name__)
+
 # Try to import MediaPipe, but make it optional for testing
 try:
     import mediapipe as mp
@@ -28,15 +31,27 @@ except ImportError:
     MEDIAPIPE_AVAILABLE = False
     mp = None
 
-# Try to import Gemini, but make it optional
-try:
-    import google.generativeai as genai
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
-    genai = None
+# Try to import Vertex AI Gemini, fall back to google-generativeai
+VERTEX_AI_AVAILABLE = False
+GEMINI_AVAILABLE = False
+vertexai = None
+genai = None
 
-logger = logging.getLogger(__name__)
+try:
+    import vertexai
+    from vertexai.generative_models import GenerativeModel, Part, Image as VertexImage
+    VERTEX_AI_AVAILABLE = True
+    logger.info("Vertex AI SDK available")
+except ImportError:
+    pass
+
+if not VERTEX_AI_AVAILABLE:
+    try:
+        import google.generativeai as genai
+        GEMINI_AVAILABLE = True
+        logger.info("google-generativeai SDK available")
+    except ImportError:
+        pass
 
 # OpenCV Haar Cascade paths for fallback face detection
 HAAR_CASCADE_FACE = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
@@ -129,12 +144,12 @@ class VideoProcessor:
         (0.0, -330.0, -65.0)         # Chin
     ], dtype=np.float64)
     
-    def __init__(self, gemini_api_key: str, config: dict = None):
+    def __init__(self, gemini_api_key: str = None, config: dict = None):
         """
         Initialize video processor with enhanced detection capabilities
         
         Args:
-            gemini_api_key: API key for Gemini visual analysis
+            gemini_api_key: API key for Gemini visual analysis (optional if using Vertex AI)
             config: Configuration dictionary with thresholds
         """
         self.config = config or {}
@@ -186,19 +201,54 @@ class VideoProcessor:
         # Load uniform forensics knowledge base
         self.uniform_codes = self._load_uniform_codes()
         
-        # Initialize Gemini if API key provided
-        if gemini_api_key and GEMINI_AVAILABLE:
-            try:
-                genai.configure(api_key=gemini_api_key)
-                self.gemini_model = genai.GenerativeModel('gemini-2.0-flash-exp')
-                logger.info("Gemini model initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Gemini: {e}")
-                self.gemini_model = None
-        else:
-            self.gemini_model = None
+        # Initialize Gemini via Vertex AI or direct API
+        self._init_gemini(gemini_api_key)
         
         logger.info(f"VideoProcessor initialized - Detection: {self.detection_method}, EAR: {self.ear_threshold}")
+    
+    def _init_gemini(self, gemini_api_key: str = None):
+        """Initialize Gemini model via Vertex AI or direct API"""
+        self.gemini_model = None
+        self.use_vertex_ai = False
+        
+        # Try Vertex AI first (preferred - uses service account)
+        if VERTEX_AI_AVAILABLE:
+            try:
+                project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+                location = os.getenv('VERTEX_AI_LOCATION', 'us-central1')
+                model_name = os.getenv('GEMINI_VISION_MODEL', 'gemini-2.5-flash')
+                
+                # Ensure credentials path is absolute
+                creds_path = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+                if creds_path and not os.path.isabs(creds_path):
+                    abs_creds_path = os.path.abspath(creds_path)
+                    os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = abs_creds_path
+                    logger.info(f"Using credentials: {abs_creds_path}")
+                
+                if project_id:
+                    vertexai.init(project=project_id, location=location)
+                    self.gemini_model = GenerativeModel(model_name)
+                    self.use_vertex_ai = True
+                    logger.info(f"Vertex AI Gemini initialized: {model_name} @ {project_id}/{location}")
+                    return
+                else:
+                    logger.warning("GOOGLE_CLOUD_PROJECT not set, falling back to direct API")
+            except Exception as e:
+                logger.error(f"Failed to initialize Vertex AI: {e}")
+        
+        # Fall back to direct Gemini API
+        if GEMINI_AVAILABLE and gemini_api_key:
+            try:
+                genai.configure(api_key=gemini_api_key)
+                model_name = os.getenv('GEMINI_VISION_MODEL', 'gemini-2.0-flash-exp')
+                self.gemini_model = genai.GenerativeModel(model_name)
+                logger.info(f"Gemini API initialized: {model_name}")
+            except Exception as e:
+                logger.error(f"Failed to initialize Gemini API: {e}")
+                self.gemini_model = None
+        
+        if self.gemini_model is None:
+            logger.warning("No Gemini model available - visual analysis disabled")
     
     def _init_dnn_face_detector(self):
         """Initialize OpenCV DNN-based face detector (more accurate than Haar)"""
@@ -1152,6 +1202,7 @@ class VideoProcessor:
         - Privacy redaction before sending to API
         - RAG-augmented uniform verification against official codes
         - Specific evidence-based refutations
+        - Support for both Vertex AI and direct Gemini API
         
         Args:
             frame: Input video frame
@@ -1174,40 +1225,22 @@ class VideoProcessor:
             # Apply privacy redaction before sending to cloud
             redacted_frame = self.apply_privacy_redaction(frame)
             
-            # Convert frame to base64
-            img_base64 = self.frame_to_base64(redacted_frame)
-            if not img_base64:
-                raise Exception("Failed to convert frame")
-            
             # Enhance prompt with uniform forensics knowledge base
             forensic_prompt = self._build_forensic_prompt(prompt)
             
-            # Prepare image for Gemini
-            image_data = {
-                "mime_type": "image/jpeg",
-                "data": img_base64
-            }
+            # Call appropriate API based on initialization
+            if self.use_vertex_ai:
+                response = self._call_vertex_ai(redacted_frame, forensic_prompt)
+            else:
+                response = self._call_gemini_api(redacted_frame, forensic_prompt)
             
-            # Call Gemini API with safety settings to allow threat analysis
-            safety_settings = [
-                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
-            ]
-            
-            response = self.gemini_model.generate_content(
-                [forensic_prompt, image_data],
-                safety_settings=safety_settings
-            )
-            
-            if not response.text:
+            if not response:
                 raise Exception("Empty response from Gemini")
             
             # Parse JSON response
             try:
                 # Clean response text (remove markdown code blocks if present)
-                response_text = response.text.strip()
+                response_text = response.strip()
                 if response_text.startswith("```json"):
                     response_text = response_text[7:]
                 if response_text.startswith("```"):
@@ -1220,10 +1253,10 @@ class VideoProcessor:
                 # If not JSON, treat as plain text
                 analysis = {
                     "score": 5.0,
-                    "uniform_detected": "uniform" in response.text.lower(),
+                    "uniform_detected": "uniform" in response.lower(),
                     "anomalies": ["Analysis not in JSON format"],
-                    "background_static": "static" in response.text.lower(),
-                    "analysis": response.text,
+                    "background_static": "static" in response.lower(),
+                    "analysis": response,
                     "agency_claimed": "",
                     "uniform_inconsistencies": [],
                     "is_verified_fake": False
@@ -1234,7 +1267,7 @@ class VideoProcessor:
                 uniform_detected=bool(analysis.get("uniform_detected", False)),
                 anomalies=analysis.get("anomalies", []),
                 background_static=bool(analysis.get("background_static", False)),
-                raw_analysis=analysis.get("analysis", response.text),
+                raw_analysis=analysis.get("analysis", response),
                 confidence=0.85,
                 uniform_agency_claimed=analysis.get("agency_claimed", ""),
                 uniform_inconsistencies=analysis.get("uniform_inconsistencies", []),
@@ -1251,6 +1284,80 @@ class VideoProcessor:
                 raw_analysis=f"Error: {str(e)}",
                 confidence=0.0
             )
+    
+    def _call_vertex_ai(self, frame: np.ndarray, prompt: str) -> Optional[str]:
+        """
+        Call Vertex AI Gemini API
+        
+        Args:
+            frame: Redacted video frame
+            prompt: Analysis prompt
+            
+        Returns:
+            Response text or None
+        """
+        try:
+            from vertexai.generative_models import Part, Image
+            
+            # Convert frame to bytes
+            img_base64 = self.frame_to_base64(frame)
+            if not img_base64:
+                raise Exception("Failed to convert frame")
+            
+            # Create image part for Vertex AI
+            image_bytes = base64.b64decode(img_base64)
+            image_part = Part.from_data(data=image_bytes, mime_type="image/jpeg")
+            
+            # Call Vertex AI
+            response = self.gemini_model.generate_content([prompt, image_part])
+            
+            return response.text if response.text else None
+            
+        except Exception as e:
+            logger.error(f"Vertex AI call failed: {e}")
+            return None
+    
+    def _call_gemini_api(self, frame: np.ndarray, prompt: str) -> Optional[str]:
+        """
+        Call direct Gemini API (google-generativeai)
+        
+        Args:
+            frame: Redacted video frame
+            prompt: Analysis prompt
+            
+        Returns:
+            Response text or None
+        """
+        try:
+            # Convert frame to base64
+            img_base64 = self.frame_to_base64(frame)
+            if not img_base64:
+                raise Exception("Failed to convert frame")
+            
+            # Prepare image for Gemini
+            image_data = {
+                "mime_type": "image/jpeg",
+                "data": img_base64
+            }
+            
+            # Safety settings to allow threat analysis
+            safety_settings = [
+                {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_ONLY_HIGH"},
+                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_ONLY_HIGH"},
+            ]
+            
+            response = self.gemini_model.generate_content(
+                [prompt, image_data],
+                safety_settings=safety_settings
+            )
+            
+            return response.text if response.text else None
+            
+        except Exception as e:
+            logger.error(f"Gemini API call failed: {e}")
+            return None
     
     def _build_forensic_prompt(self, base_prompt: str) -> str:
         """

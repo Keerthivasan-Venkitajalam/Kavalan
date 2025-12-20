@@ -7,12 +7,17 @@ Enhanced with:
 - Stress-aware response generation
 - Evidence-based alert messaging
 - Cluster logic (require multiple signals)
+- MCP context support for auditable decision inputs
 """
 
 from dataclasses import dataclass, field
-from typing import Tuple, List, Dict, Optional
+from typing import Tuple, List, Dict, Optional, TYPE_CHECKING
 import logging
 import time
+
+# Import MCP contexts for type hints (avoid circular imports)
+if TYPE_CHECKING:
+    from modules.mcp_contexts import FusionDecisionContext
 
 logger = logging.getLogger(__name__)
 
@@ -271,11 +276,9 @@ class FusionEngine:
             final_score = min(10.0, final_score + cluster_boost)
             confidence = 0.9
         else:
-            # Single signal - reduce confidence
-            confidence = 0.6
-            # If only one high score but not a cluster, cap the final score
-            if max(visual, liveness, audio) >= 8.0 and final_score >= 8.0:
-                final_score = min(final_score, 7.5)  # Prevent single-signal critical alerts
+            # Single signal - still allow alerts but with lower confidence
+            confidence = 0.7
+            # Single strong signals can still trigger alerts (no aggressive capping)
         
         # Ensure final score is in valid range
         final_score = self._clamp_score(final_score)
@@ -417,3 +420,43 @@ class FusionEngine:
                 "message": result.alert_message
             }
         }
+    
+    def fuse_from_context(self, fusion_context: "FusionDecisionContext") -> FusionResult:
+        """
+        Fuse scores from an explicit MCP FusionDecisionContext.
+        
+        This method provides an auditable entry point where all decision
+        inputs are captured in an immutable context before fusion.
+        
+        Args:
+            fusion_context: FusionDecisionContext containing visual, audio,
+                           and liveness signals
+            
+        Returns:
+            FusionResult with combined score and alert status
+        """
+        # Extract scores from MCP contexts
+        visual_score = fusion_context.visual_context.visual_score
+        audio_score = fusion_context.audio_context.audio_score
+        liveness_score = fusion_context.liveness_score
+        
+        # Build ThreatContext from MCP contexts for existing fusion logic
+        context = ThreatContext(
+            uniform_detected=fusion_context.visual_context.uniform_detected,
+            uniform_is_fake=fusion_context.visual_context.uniform_is_verified_fake,
+            agency_claimed=fusion_context.visual_context.uniform_agency_claimed,
+            coercion_detected=fusion_context.audio_context.coercion_detected,
+            financial_demand=fusion_context.audio_context.financial_demand_detected,
+            authority_claim=fusion_context.audio_context.authority_claim_detected,
+            user_stress_level=fusion_context.user_stress_level,
+            is_static_spoof=fusion_context.is_static_spoof,
+            transcript_keywords=list(fusion_context.audio_context.detected_categories)
+        )
+        
+        # Delegate to existing fusion logic
+        return self.fuse_scores(
+            visual=visual_score,
+            liveness=liveness_score,
+            audio=audio_score,
+            context=context
+        )
