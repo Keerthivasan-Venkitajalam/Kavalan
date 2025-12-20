@@ -121,3 +121,8 @@ IMPLEMENTATION_COMPLETE.md
 DEPLOYMENT_SUCCESS.md# Credentials (DO NOT COMMIT)
 config/vertex-ai-credentials.json
 *.json.bak
+process_demo_videos.py
+.DS_Store
+demo_output/
+Videos/
+modules/audio_processor_old.py
