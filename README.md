@@ -519,35 +519,6 @@ Distributed tracing for end-to-end request flows:
 
 ---
 
-## Roadmap
-
-### Phase 1: MVP (Completed)
-- Browser extension with WebRTC interception
-- Multimodal AI analysis (audio, visual, liveness)
-- Threat fusion and alerting
-- Digital FIR generation
-- Multi-language support
-
-### Phase 2: Enhanced Detection (Q2 2025)
-- Advanced deepfake detection with temporal analysis
-- Behavioral pattern recognition (victim stress indicators)
-- Network analysis (call origin, IP geolocation)
-- Integration with law enforcement databases
-
-### Phase 3: Scale & Optimize (Q3 2025)
-- Edge deployment in tier-2 Indian cities
-- Model quantization for faster inference
-- Federated learning for privacy-preserving improvements
-- Mobile app for iOS/Android
-
-### Phase 4: Ecosystem (Q4 2025)
-- API for third-party integrations
-- White-label solution for enterprises
-- Community reporting platform
-- Educational resources and awareness campaigns
-
----
-
 ## Contributing
 
 We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or enhancing AI models, your help is appreciated.
