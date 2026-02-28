@@ -19,16 +19,9 @@
 
 ---
 
-## 🏆 Hackathon Achievement
+## Hackathon Recognition
 
-**2nd Prize Winner** at **GenAI Hackathon ML.Cbe 2025**
-
-Organized by **AI Tamil Nadu** (formerly AI Coimbatore) in collaboration with:
-- **Nunnari Labs**
-- **DeepWeaver.ai**
-- **Google for Developers**
-
-**Team Thudakkam** developed Kavalan to combat the rising threat of Digital Arrest scams targeting vulnerable populations in India.
+Kavalan was developed by Team Thudakkam and received 2nd Prize at GenAI Hackathon ML.Cbe 2025, organized by AI Tamil Nadu in collaboration with Nunnari Labs, DeepWeaver.ai, and Google for Developers.
 
 ---
 
@@ -133,14 +126,14 @@ Kavalan follows a distributed microservices architecture with browser extension 
 
 ## Key Features
 
-### 🛡️ Real-Time Protection
+### Real-Time Protection
 
 - **Sub-second latency**: End-to-end threat detection in <1000ms
 - **Automatic activation**: Monitoring starts when video call begins
 - **Non-intrusive**: Runs silently in background without disrupting calls
 - **Platform support**: Google Meet, Zoom, Microsoft Teams
 
-### 🧠 Multimodal AI Analysis
+### Multimodal AI Analysis
 
 **Audio Analysis (OpenAI Whisper)**
 - Speech-to-text transcription with word-level timestamps
@@ -160,14 +153,14 @@ Kavalan follows a distributed microservices architecture with browser extension 
 - Head pose variance analysis
 - Stress indicator identification
 
-### 📊 Threat Fusion Engine
+### Threat Fusion Engine
 
 - **Weighted score combination**: Audio (45%), Visual (35%), Liveness (20%)
 - **Confidence-weighted conflict resolution**: Handles disagreements between modalities
 - **Unified threat score**: 0-10 scale with threat levels (low/moderate/high/critical)
 - **Explainable AI**: Human-readable explanations for each threat assessment
 
-### 📝 Digital FIR Generation
+### Digital FIR Generation
 
 - **Automatic evidence collection**: Triggered when threat score ≥ 7.0
 - **Comprehensive package**: Timestamped transcripts, video frames, threat scores
@@ -175,14 +168,14 @@ Kavalan follows a distributed microservices architecture with browser extension 
 - **Legal compliance**: PDF export for law enforcement submission
 - **Cryptographic signatures**: Ensures evidence integrity
 
-### 🌐 Multi-Language Support
+### Multi-Language Support
 
 - **6 Indian languages**: Hindi, English, Tamil, Telugu, Malayalam, Kannada
 - **Code-switching handling**: Mixed-language transcription
 - **Localized alerts**: Warnings displayed in user's preferred language
 - **Language-specific patterns**: Threat detection adapted per language
 
-### 🔒 Security & Compliance
+### Security & Compliance
 
 - **End-to-end encryption**: AES-256-GCM for all media transmission
 - **DPDP Act 2023 compliance**: Data protection and privacy regulations
@@ -190,7 +183,7 @@ Kavalan follows a distributed microservices architecture with browser extension 
 - **Audit logging**: Complete trail of all data access operations
 - **User consent**: Explicit opt-in required before processing
 
-### ♿ Accessibility
+### Accessibility
 
 - **Stress-aware UI**: Optimized for elderly users under duress
 - **Large fonts**: Minimum 16px with high contrast colors
@@ -530,7 +523,7 @@ Distributed tracing for end-to-end request flows:
 
 ## Roadmap
 
-### Phase 1: MVP (Completed ✅)
+### Phase 1: MVP (Completed)
 - Browser extension with WebRTC interception
 - Multimodal AI analysis (audio, visual, liveness)
 - Threat fusion and alerting
@@ -629,8 +622,8 @@ For questions, feedback, or collaboration opportunities:
 
 **Kavalan (காவலன்)** - Protecting India from Digital Arrest Scams
 
-Built with ❤️ by Team Thudakkam for GenAI Hackathon ML.Cbe 2025
+Built by Team Thudakkam
 
-[⭐ Star us on GitHub](https://github.com/Keerthivasan-Venkitajalam/Kavalan) | [📖 Read the Docs](https://github.com/Keerthivasan-Venkitajalam/Kavalan/wiki) | [🐛 Report Issues](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues)
+[Star us on GitHub](https://github.com/Keerthivasan-Venkitajalam/Kavalan) | [Read the Docs](https://github.com/Keerthivasan-Venkitajalam/Kavalan/wiki) | [Report Issues](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues)
 
 </div>
