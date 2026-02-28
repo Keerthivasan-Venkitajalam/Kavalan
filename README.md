@@ -1,10 +1,10 @@
 <div align="center">
 
-# Kavalan (காவலன்)
+# Kavalan
 
 ### Real-Time Digital Arrest Scam Detection During Video Calls
 
-**AI-powered browser extension protecting users from Digital Arrest scams through multimodal threat analysis**
+AI-powered browser extension protecting users from Digital Arrest scams through multimodal threat analysis
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg?style=for-the-badge)](https://github.com/Keerthivasan-Venkitajalam/Kavalan)
 [![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
@@ -13,29 +13,29 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker)](https://docker.com)
 
-[About](#about-the-project) • [Architecture](#system-architecture) • [Features](#key-features) • [Getting Started](#getting-started) • [Tech Stack](#tech-stack) • [Team](#team)
+[About](#about-the-project) | [Architecture](#system-architecture) | [Features](#key-features) | [Getting Started](#getting-started) | [Tech Stack](#tech-stack) | [Team](#team)
 
 </div>
 
 ---
 
-## Hackathon Recognition
+## About the Project
 
-Kavalan was developed by Team Thudakkam and received 2nd Prize at GenAI Hackathon ML.Cbe 2025, organized by AI Tamil Nadu in collaboration with Nunnari Labs, DeepWeaver.ai, and Google for Developers.
+Kavalan was developed by Team Thudakkam and recognized with 2nd Prize at GenAI Hackathon ML.Cbe 2025, organized by AI Tamil Nadu in collaboration with Nunnari Labs, DeepWeaver.ai, and Google for Developers.
 
 ---
 
 ## About the Project
 
-**Kavalan** (காவலன் - meaning "Guardian" in Tamil) is a production-ready browser extension that provides real-time protection against Digital Arrest scams during video conferencing sessions. Using advanced multimodal AI analysis, Kavalan monitors audio, visual, and behavioral cues to detect scam patterns and alert users before they become victims.
+Kavalan (meaning "Guardian" in Tamil) is a production-ready browser extension that provides real-time protection against Digital Arrest scams during video conferencing sessions. Using advanced multimodal AI analysis, Kavalan monitors audio, visual, and behavioral cues to detect scam patterns and alert users before they become victims.
 
 ### The Problem: Digital Arrest Scams
 
 Digital Arrest scams have become a major threat in India, with fraudsters impersonating law enforcement officials during video calls to extort money from victims. These scams exploit:
-- **Authority intimidation**: Fake police/CBI uniforms and badges
-- **Psychological pressure**: Threats of arrest and legal action
-- **Urgency tactics**: Demands for immediate payment
-- **Deepfake technology**: AI-generated videos of officials
+- Authority intimidation: Fake police/CBI uniforms and badges
+- Psychological pressure: Threats of arrest and legal action
+- Urgency tactics: Demands for immediate payment
+- Deepfake technology: AI-generated videos of officials
 
 Traditional security solutions fail because these scams happen in real-time during legitimate video conferencing platforms (Google Meet, Zoom, Microsoft Teams).
 
@@ -43,12 +43,12 @@ Traditional security solutions fail because these scams happen in real-time duri
 
 Kavalan transforms passive video calls into actively monitored sessions with:
 
-- **Real-time threat detection** (<1 second latency)
-- **Multimodal AI analysis** (audio + visual + liveness detection)
-- **Automatic evidence collection** (Digital FIR generation)
-- **Multi-language support** (Hindi, English, Tamil, Telugu, Malayalam, Kannada)
-- **DPDP Act 2023 compliance** (data protection and privacy)
-- **Stress-aware UI** optimized for elderly users under duress
+- Real-time threat detection (sub-second latency)
+- Multimodal AI analysis (audio + visual + liveness detection)
+- Automatic evidence collection (Digital FIR generation)
+- Multi-language support (Hindi, English, Tamil, Telugu, Malayalam, Kannada)
+- DPDP Act 2023 compliance (data protection and privacy)
+- Stress-aware UI optimized for elderly users under duress
 
 ---
 
@@ -128,26 +128,26 @@ Kavalan follows a distributed microservices architecture with browser extension 
 
 ### Real-Time Protection
 
-- **Sub-second latency**: End-to-end threat detection in <1000ms
-- **Automatic activation**: Monitoring starts when video call begins
-- **Non-intrusive**: Runs silently in background without disrupting calls
-- **Platform support**: Google Meet, Zoom, Microsoft Teams
+- Sub-second latency: End-to-end threat detection in under 1000ms
+- Automatic activation: Monitoring starts when video call begins
+- Non-intrusive: Runs silently in background without disrupting calls
+- Platform support: Google Meet, Zoom, Microsoft Teams
 
 ### Multimodal AI Analysis
 
-**Audio Analysis (OpenAI Whisper)**
+Audio Analysis (OpenAI Whisper)
 - Speech-to-text transcription with word-level timestamps
 - Keyword matching for scam patterns (authority, coercion, financial threats)
 - Speaker diarization for multi-participant calls
 - Low-confidence flagging for uncertain transcriptions
 
-**Visual Analysis (Google Gemini Vision)**
+Visual Analysis (Google Gemini Vision)
 - Uniform and badge detection (police, CBI, government)
 - Threatening visual element identification
 - On-screen text extraction (OCR)
 - Confidence scoring for each detection
 
-**Liveness Detection (MediaPipe)**
+Liveness Detection (MediaPipe)
 - Facial landmark analysis (468 points)
 - Blink rate monitoring for deepfake detection
 - Head pose variance analysis
@@ -155,41 +155,41 @@ Kavalan follows a distributed microservices architecture with browser extension 
 
 ### Threat Fusion Engine
 
-- **Weighted score combination**: Audio (45%), Visual (35%), Liveness (20%)
-- **Confidence-weighted conflict resolution**: Handles disagreements between modalities
-- **Unified threat score**: 0-10 scale with threat levels (low/moderate/high/critical)
-- **Explainable AI**: Human-readable explanations for each threat assessment
+- Weighted score combination: Audio (45%), Visual (35%), Liveness (20%)
+- Confidence-weighted conflict resolution: Handles disagreements between modalities
+- Unified threat score: 0-10 scale with threat levels (low/moderate/high/critical)
+- Explainable AI: Human-readable explanations for each threat assessment
 
 ### Digital FIR Generation
 
-- **Automatic evidence collection**: Triggered when threat score ≥ 7.0
-- **Comprehensive package**: Timestamped transcripts, video frames, threat scores
-- **Chain-of-custody tracking**: Tamper-proof audit trail
-- **Legal compliance**: PDF export for law enforcement submission
-- **Cryptographic signatures**: Ensures evidence integrity
+- Automatic evidence collection: Triggered when threat score reaches 7.0 or higher
+- Comprehensive package: Timestamped transcripts, video frames, threat scores
+- Chain-of-custody tracking: Tamper-proof audit trail
+- Legal compliance: PDF export for law enforcement submission
+- Cryptographic signatures: Ensures evidence integrity
 
 ### Multi-Language Support
 
-- **6 Indian languages**: Hindi, English, Tamil, Telugu, Malayalam, Kannada
-- **Code-switching handling**: Mixed-language transcription
-- **Localized alerts**: Warnings displayed in user's preferred language
-- **Language-specific patterns**: Threat detection adapted per language
+- 6 Indian languages: Hindi, English, Tamil, Telugu, Malayalam, Kannada
+- Code-switching handling: Mixed-language transcription
+- Localized alerts: Warnings displayed in user's preferred language
+- Language-specific patterns: Threat detection adapted per language
 
 ### Security & Compliance
 
-- **End-to-end encryption**: AES-256-GCM for all media transmission
-- **DPDP Act 2023 compliance**: Data protection and privacy regulations
-- **Data residency**: All data stored within Indian territory
-- **Audit logging**: Complete trail of all data access operations
-- **User consent**: Explicit opt-in required before processing
+- End-to-end encryption: AES-256-GCM for all media transmission
+- DPDP Act 2023 compliance: Data protection and privacy regulations
+- Data residency: All data stored within Indian territory
+- Audit logging: Complete trail of all data access operations
+- User consent: Explicit opt-in required before processing
 
 ### Accessibility
 
-- **Stress-aware UI**: Optimized for elderly users under duress
-- **Large fonts**: Minimum 16px with high contrast colors
-- **Screen reader support**: ARIA labels for visually impaired users
-- **Keyboard navigation**: Full functionality without mouse
-- **Simple actions**: Emergency "End Call" button prominently displayed
+- Stress-aware UI: Optimized for elderly users under duress
+- Large fonts: Minimum 16px with high contrast colors
+- Screen reader support: ARIA labels for visually impaired users
+- Keyboard navigation: Full functionality without mouse
+- Simple actions: Emergency "End Call" button prominently displayed
 
 ---
 
@@ -197,42 +197,42 @@ Kavalan follows a distributed microservices architecture with browser extension 
 
 ### Frontend (Browser Extension)
 
-- **Framework**: Chrome/Firefox Extension (Manifest V3)
-- **Language**: TypeScript 5.0
-- **UI Library**: React 18 with Vite 4
-- **Styling**: Tailwind CSS 3.4
-- **State Management**: React Hooks
-- **Encryption**: Web Crypto API (AES-256-GCM)
+- Framework: Chrome/Firefox Extension (Manifest V3)
+- Language: TypeScript 5.0
+- UI Library: React 18 with Vite 4
+- Styling: Tailwind CSS 3.4
+- State Management: React Hooks
+- Encryption: Web Crypto API (AES-256-GCM)
 
 ### Backend Services
 
-- **API Framework**: FastAPI (Python 3.12)
-- **Message Queue**: Redis + Celery
-- **Load Balancer**: NGINX with TLS termination
-- **Authentication**: JWT tokens
-- **Rate Limiting**: Per-user and per-IP throttling
+- API Framework: FastAPI (Python 3.12)
+- Message Queue: Redis + Celery
+- Load Balancer: NGINX with TLS termination
+- Authentication: JWT tokens
+- Rate Limiting: Per-user and per-IP throttling
 
 ### AI/ML Models
 
-- **Audio Transcription**: OpenAI Whisper (medium model)
-- **Visual Analysis**: Google Gemini 2.5 Flash Vision API
-- **Liveness Detection**: MediaPipe Face Landmarker
-- **Embeddings**: IndicSBERT for Dravidian languages
+- Audio Transcription: OpenAI Whisper (medium model)
+- Visual Analysis: Google Gemini 2.5 Flash Vision API
+- Liveness Detection: MediaPipe Face Landmarker
+- Embeddings: IndicSBERT for Dravidian languages
 
 ### Databases
 
-- **Structured Data**: PostgreSQL 18 (users, sessions, threat events, audit logs)
-- **Unstructured Data**: MongoDB (transcripts, video frames, evidence packages)
-- **Vector Search**: pgvector for semantic similarity
-- **Caching**: Redis for threat patterns and intermediate results
+- Structured Data: PostgreSQL 18 (users, sessions, threat events, audit logs)
+- Unstructured Data: MongoDB (transcripts, video frames, evidence packages)
+- Vector Search: pgvector for semantic similarity
+- Caching: Redis for threat patterns and intermediate results
 
 ### Infrastructure
 
-- **Containerization**: Docker + Docker Compose
-- **Orchestration**: Kubernetes with auto-scaling
-- **Observability**: Prometheus + Grafana + OpenTelemetry
-- **CI/CD**: GitHub Actions with blue-green deployment
-- **Cloud**: AWS Mumbai, GCP Chennai (Indian data centers)
+- Containerization: Docker + Docker Compose
+- Orchestration: Kubernetes with auto-scaling
+- Observability: Prometheus + Grafana + OpenTelemetry
+- CI/CD: GitHub Actions with blue-green deployment
+- Cloud: AWS Mumbai, GCP Chennai (Indian data centers)
 
 ---
 
@@ -240,10 +240,10 @@ Kavalan follows a distributed microservices architecture with browser extension 
 
 ### Prerequisites
 
-- **Docker & Docker Compose** (for simplest setup)
-- **Node.js 18+** (for frontend development)
-- **Python 3.12+** (for backend development)
-- **API Keys**:
+- Docker & Docker Compose (for simplest setup)
+- Node.js 18+ (for frontend development)
+- Python 3.12+ (for backend development)
+- API Keys:
   - Google Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
   - OpenAI API key (optional, for Whisper cloud API)
 
@@ -507,15 +507,15 @@ Available at `/metrics`:
 
 Pre-built dashboards for:
 
-- **Threat Detection Overview**: Real-time threat rates, alert distribution
-- **System Health**: CPU, memory, queue depth, error rates
-- **Service Performance**: Latency percentiles, throughput, success rates
+- Threat Detection Overview: Real-time threat rates, alert distribution
+- System Health: CPU, memory, queue depth, error rates
+- Service Performance: Latency percentiles, throughput, success rates
 
 ### OpenTelemetry Tracing
 
 Distributed tracing for end-to-end request flows:
 
-- Extension → API Gateway → Message Queue → Workers → Database
+- Extension to API Gateway to Message Queue to Workers to Database
 - Span details for each processing stage
 - Error tracking with stack traces
 
@@ -556,13 +556,13 @@ We welcome contributions from the community! Whether you're fixing bugs, adding 
 
 ### How to Contribute
 
-1. **Fork** the repository
-2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
-3. **Commit** your changes (`git commit -m 'Add some amazing feature'`)
-4. **Add tests** for new functionality
-5. **Run** the test suite (`pytest` and `npm test`)
-6. **Push** to the branch (`git push origin feature/amazing-feature`)
-7. **Open** a Pull Request
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Add tests for new functionality
+5. Run the test suite (`pytest` and `npm test`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
 
 ### Development Guidelines
 
@@ -583,9 +583,9 @@ We welcome contributions from the community! Whether you're fixing bugs, adding 
 
 | Member | Role | GitHub |
 |--------|------|--------|
-| **Keerthivasan S V** | Lead Developer & AI/ML | [@Keerthivasan-Venkitajalam](https://github.com/Keerthivasan-Venkitajalam) |
-| **Naveen Babu M S** | Backend & Infrastructure | [@naveen-astra](https://github.com/naveen-astra) |
-| **B Rahul** | Frontend & Extension | [@Bat-hub-hash](https://github.com/Bat-hub-hash) |
+| Keerthivasan S V | Lead Developer & AI/ML | [@Keerthivasan-Venkitajalam](https://github.com/Keerthivasan-Venkitajalam) |
+| Naveen Babu M S | Backend & Infrastructure | [@naveen-astra](https://github.com/naveen-astra) |
+| B Rahul | Frontend & Extension | [@Bat-hub-hash](https://github.com/Bat-hub-hash) |
 
 </div>
 
@@ -599,11 +599,11 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## Acknowledgments
 
-- **AI Tamil Nadu** (formerly AI Coimbatore) for organizing the hackathon
-- **Nunnari Labs**, **DeepWeaver.ai**, and **Google for Developers** for their support
-- **OpenAI** for Whisper speech recognition
-- **Google** for Gemini Vision API
-- **MediaPipe** team for facial landmark detection
+- AI Tamil Nadu (formerly AI Coimbatore) for organizing the hackathon
+- Nunnari Labs, DeepWeaver.ai, and Google for Developers for their support
+- OpenAI for Whisper speech recognition
+- Google for Gemini Vision API
+- MediaPipe team for facial landmark detection
 - Open-source community for foundational libraries
 
 ---
@@ -612,15 +612,13 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 For questions, feedback, or collaboration opportunities:
 
-- **Email**: keerthivasan.sv@example.com
-- **GitHub Issues**: [Report Bug](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues) | [Request Feature](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues)
-- **Twitter**: [@TeamThudakkam](https://twitter.com/TeamThudakkam)
+- GitHub Issues: [Report Bug](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues) | [Request Feature](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues)
 
 ---
 
 <div align="center">
 
-**Kavalan (காவலன்)** - Protecting India from Digital Arrest Scams
+Kavalan - Protecting India from Digital Arrest Scams
 
 Built by Team Thudakkam
 
