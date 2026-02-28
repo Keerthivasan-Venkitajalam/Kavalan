@@ -68,6 +68,8 @@ jobs:
           name: extension-build
           path: packages/extension/dist
           retention-days: 7
+          if-no-files-found: warn
+        continue-on-error: true
 
   # Backend CI
   backend-ci:

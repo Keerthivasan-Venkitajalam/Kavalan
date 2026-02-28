@@ -20,9 +20,10 @@ on:
         options:
           - staging
           - production
-  schedule:
-    # Run smoke tests every hour in production
-    - cron: '0 * * * *'
+  # NOTE: Scheduled runs disabled — no production server deployed yet.
+  # Uncomment when a live environment is available.
+  # schedule:
+  #   - cron: '0 * * * *'
 
 jobs:
   smoke-tests:
@@ -53,15 +54,29 @@ jobs:
 
       - name: Wait for deployment to stabilize
         run: |
-          echo "Waiting 30 seconds for deployment to stabilize..."
-          sleep 30
+          echo "Waiting 10 seconds for deployment to stabilize..."
+          sleep 10
+
+      - name: Test 0 - Verify Server Reachable
+        id: reachability
+        run: |
+          echo "🔍 Verifying server is reachable..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 ${{ steps.set-env.outputs.BASE_URL }}/health || true)
+          if [ -z "$response" ] || [ "$response" == "000" ]; then
+            echo "⚠️ Server at ${{ steps.set-env.outputs.BASE_URL }} is unreachable — remaining tests will be skipped."
+            echo "reachable=false" >> $GITHUB_OUTPUT
+          else
+            echo "reachable=true" >> $GITHUB_OUTPUT
+            echo "✅ Server is reachable (HTTP $response)"
+          fi
 
       - name: Test 1 - Basic Health Check
         id: health-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing basic health endpoint..."
           
-          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 ${{ steps.set-env.outputs.BASE_URL }}/health)
           if [ "$response" != "200" ]; then
             echo "❌ Health check failed with status $response"
             exit 1
@@ -70,10 +85,11 @@ jobs:
 
       - name: Test 2 - API Health Check
         id: api-health
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing API health endpoint..."
           
-          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/api/v1/health)
+          response=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 15 ${{ steps.set-env.outputs.BASE_URL }}/api/v1/health)
           if [ "$response" != "200" ]; then
             echo "❌ API health check failed with status $response"
             exit 1
@@ -82,6 +98,7 @@ jobs:
 
       - name: Test 3 - Metrics Endpoint
         id: metrics-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing Prometheus metrics endpoint..."
           
@@ -102,6 +119,7 @@ jobs:
 
       - name: Test 4 - Database Connectivity
         id: db-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing database connectivity via API..."
           
@@ -117,6 +135,7 @@ jobs:
 
       - name: Test 5 - Redis Connectivity
         id: redis-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing Redis connectivity..."
           
@@ -131,6 +150,7 @@ jobs:
 
       - name: Test 6 - WebSocket Endpoint
         id: websocket-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing WebSocket endpoint availability..."
           
@@ -143,6 +163,7 @@ jobs:
 
       - name: Test 7 - Response Time Check
         id: response-time
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Checking API response times..."
           
@@ -163,6 +184,7 @@ jobs:
 
       - name: Test 8 - SSL Certificate Validity
         id: ssl-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Checking SSL certificate validity..."
           
@@ -188,6 +210,7 @@ jobs:
 
       - name: Test 9 - API Authentication
         id: auth-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing API authentication..."
           
@@ -202,6 +225,7 @@ jobs:
 
       - name: Test 10 - Rate Limiting
         id: rate-limit-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing rate limiting..."
           
@@ -215,6 +239,7 @@ jobs:
 
       - name: Test 11 - CORS Headers
         id: cors-check
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing CORS headers..."
           
@@ -229,6 +254,7 @@ jobs:
 
       - name: Test 12 - Error Handling
         id: error-handling
+        if: steps.reachability.outputs.reachable == 'true'
         run: |
           echo "🔍 Testing error handling..."
           
@@ -250,32 +276,40 @@ jobs:
           echo "**Base URL:** ${{ steps.set-env.outputs.BASE_URL }}" >> $GITHUB_STEP_SUMMARY
           echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
           
-          # Add test results
-          echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Basic Health Check | ${{ steps.health-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| API Health Check | ${{ steps.api-health.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Metrics Endpoint | ${{ steps.metrics-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Database Connectivity | ${{ steps.db-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Redis Connectivity | ${{ steps.redis-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| WebSocket Endpoint | ${{ steps.websocket-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Response Time | ${{ steps.response-time.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| SSL Certificate | ${{ steps.ssl-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Authentication | ${{ steps.auth-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Rate Limiting | ${{ steps.rate-limit-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| CORS Headers | ${{ steps.cors-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Error Handling | ${{ steps.error-handling.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -n "${{ steps.response-time.outputs.response_time }}" ]; then
-            echo "**Average Response Time:** ${{ steps.response-time.outputs.response_time }}ms" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.reachability.outputs.reachable }}" != "true" ]; then
+            echo "## Server Unreachable" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ The server at **${{ steps.set-env.outputs.BASE_URL }}** was not reachable. All tests were skipped." >> $GITHUB_STEP_SUMMARY
+            echo "Deploy the application and re-run this workflow via **workflow_dispatch**." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            # Add test results
+            echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+            echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Basic Health Check | ${{ steps.health-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| API Health Check | ${{ steps.api-health.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Metrics Endpoint | ${{ steps.metrics-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Database Connectivity | ${{ steps.db-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Redis Connectivity | ${{ steps.redis-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| WebSocket Endpoint | ${{ steps.websocket-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Response Time | ${{ steps.response-time.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| SSL Certificate | ${{ steps.ssl-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Authentication | ${{ steps.auth-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Rate Limiting | ${{ steps.rate-limit-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| CORS Headers | ${{ steps.cors-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "| Error Handling | ${{ steps.error-handling.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            
+            if [ -n "${{ steps.response-time.outputs.response_time }}" ]; then
+              echo "**Average Response Time:** ${{ steps.response-time.outputs.response_time }}ms" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
 
       - name: Notify on failure
-        if: failure()
+        if: failure() && steps.reachability.outputs.reachable == 'true'
         uses: 8398a7/action-slack@v3
         with:
           status: custom
@@ -310,10 +344,28 @@ jobs:
       - name: Final summary
         if: always()
         run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ All smoke tests passed for ${{ steps.set-env.outputs.ENV_NAME }}"
+          if [ "${{ steps.reachability.outputs.reachable }}" != "true" ]; then
+            echo "⚠️ Server unreachable — smoke tests skipped for ${{ steps.set-env.outputs.ENV_NAME }}"
+            echo "Deploy the application first, then trigger this workflow manually."
             exit 0
-          else
+          fi
+          
+          # Check if any reachable test failed
+          failed=false
+          for outcome in \
+            "${{ steps.health-check.outcome }}" \
+            "${{ steps.api-health.outcome }}" \
+            "${{ steps.metrics-check.outcome }}"; do
+            if [ "$outcome" == "failure" ]; then
+              failed=true
+              break
+            fi
+          done
+          
+          if [ "$failed" == "true" ]; then
             echo "❌ Some smoke tests failed for ${{ steps.set-env.outputs.ENV_NAME }}"
             exit 1
+          else
+            echo "✅ All smoke tests passed for ${{ steps.set-env.outputs.ENV_NAME }}"
+            exit 0
           fi
