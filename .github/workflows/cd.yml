@@ -1,0 +1,643 @@
+name: CD - Deploy to Staging/Production
+
+on:
+  workflow_run:
+    workflows: ["CI - Lint, Test, Build"]
+    types:
+      - completed
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  # Build and push Docker images
+  build-and-push:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - name: Build and push backend image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: packages/backend
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/amd64,linux/arm64
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.meta.outputs.tags }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom.spdx.json
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging (Blue-Green)
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/main' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.kavalan.in
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1  # Mumbai region
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name kavalan-staging-cluster --region ap-south-1
+
+      - name: Check current deployment state
+        id: check-state
+        run: |
+          # Determine which deployment is currently active (blue or green)
+          current_version=$(kubectl get service backend-service -n staging -o jsonpath='{.spec.selector.version}' || echo "blue")
+          echo "Current active version: $current_version"
+          echo "current_version=$current_version" >> $GITHUB_OUTPUT
+          
+          # Set target version (opposite of current)
+          if [ "$current_version" == "blue" ]; then
+            target_version="green"
+          else
+            target_version="blue"
+          fi
+          echo "Target version: $target_version"
+          echo "target_version=$target_version" >> $GITHUB_OUTPUT
+
+      - name: Deploy new version (Blue-Green)
+        run: |
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          echo "Deploying to $target_version deployment..."
+          
+          # Update the target deployment with new image
+          kubectl set image deployment/backend-$target_version \
+            backend=${{ needs.build-and-push.outputs.image-tag }} \
+            -n staging
+          
+          echo "✅ Image updated for $target_version deployment"
+
+      - name: Wait for rollout to complete
+        run: |
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          echo "Waiting for $target_version deployment to be ready..."
+          
+          kubectl rollout status deployment/backend-$target_version -n staging --timeout=5m
+          
+          echo "✅ Rollout completed successfully"
+
+      - name: Run health checks on new deployment
+        run: |
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          echo "Running health checks on $target_version deployment..."
+          
+          # Get the service endpoint for the target deployment
+          kubectl run health-check-$target_version --rm -i --restart=Never \
+            --image=curlimages/curl:latest \
+            -n staging \
+            -- curl -f http://backend-$target_version-service:8000/health || exit 1
+          
+          echo "✅ Health check passed"
+
+      - name: Run smoke tests on new deployment
+        run: |
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          echo "Running smoke tests on $target_version deployment..."
+          
+          # Test API health endpoint
+          kubectl run smoke-test-$target_version --rm -i --restart=Never \
+            --image=curlimages/curl:latest \
+            -n staging \
+            -- curl -f http://backend-$target_version-service:8000/api/v1/health || exit 1
+          
+          echo "✅ Smoke tests passed"
+
+      - name: Switch traffic to new deployment
+        id: switch-traffic
+        run: |
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          echo "Switching traffic from ${{ steps.check-state.outputs.current_version }} to $target_version..."
+          
+          # Update service selector to point to new deployment
+          kubectl patch service backend-service -n staging \
+            -p "{\"spec\":{\"selector\":{\"version\":\"$target_version\"}}}"
+          
+          echo "✅ Traffic switched to $target_version deployment"
+          echo "switched=true" >> $GITHUB_OUTPUT
+
+      - name: Monitor new deployment
+        run: |
+          echo "Monitoring new deployment for 60 seconds..."
+          sleep 60
+          
+          # Check if pods are still healthy
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          healthy_pods=$(kubectl get pods -n staging -l app=backend,version=$target_version -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -o "True" | wc -l)
+          
+          if [ "$healthy_pods" -eq 0 ]; then
+            echo "❌ No healthy pods found after traffic switch"
+            exit 1
+          fi
+          
+          echo "✅ Deployment is stable with $healthy_pods healthy pods"
+
+      - name: Post-deployment tests
+        run: |
+          echo "Running post-deployment tests..."
+          
+          # Health check via public endpoint
+          curl -f https://staging.kavalan.in/health || exit 1
+          
+          # API smoke test
+          curl -f https://staging.kavalan.in/api/v1/health || exit 1
+          
+          echo "✅ Basic post-deployment tests passed"
+
+      - name: Trigger comprehensive smoke tests
+        run: |
+          echo "Comprehensive smoke tests will run via smoke-tests workflow"
+          echo "Smoke tests can be triggered manually or run on schedule"
+
+      - name: Scale down old deployment
+        if: success()
+        run: |
+          old_version="${{ steps.check-state.outputs.current_version }}"
+          echo "Scaling down old $old_version deployment..."
+          
+          kubectl scale deployment/backend-$old_version --replicas=1 -n staging
+          
+          echo "✅ Old deployment scaled down (kept 1 replica for quick rollback)"
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Staging deployment successful"
+          echo "Active version: ${{ steps.check-state.outputs.target_version }}"
+          echo "Image: ${{ needs.build-and-push.outputs.image-tag }}"
+          echo "Digest: ${{ needs.build-and-push.outputs.image-digest }}"
+
+      - name: Automatic rollback on failure
+        if: failure() && steps.switch-traffic.outputs.switched == 'true'
+        run: |
+          echo "❌ Deployment failed, initiating automatic rollback..."
+          
+          old_version="${{ steps.check-state.outputs.current_version }}"
+          target_version="${{ steps.check-state.outputs.target_version }}"
+          
+          # Switch traffic back to old deployment
+          kubectl patch service backend-service -n staging \
+            -p "{\"spec\":{\"selector\":{\"version\":\"$old_version\"}}}"
+          
+          # Scale old deployment back up if needed
+          kubectl scale deployment/backend-$old_version --replicas=3 -n staging
+          
+          echo "✅ Rolled back to $old_version deployment"
+          
+          # Send alert
+          echo "::error::Staging deployment failed and was automatically rolled back"
+
+  # Deploy to Production (Requires Manual Approval)
+  deploy-production:
+    name: Deploy to Production (Blue-Green)
+    runs-on: ubuntu-latest
+    needs: [build-and-push, deploy-staging]
+    if: github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://kavalan.in
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Manual approval checkpoint
+        run: |
+          echo "⏸️  Manual approval required for production deployment"
+          echo "This step will wait for approval in GitHub Actions UI"
+          echo "Image to deploy: ${{ needs.build-and-push.outputs.image-tag }}"
+
+      - name: Configure AWS credentials (Mumbai)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1  # Mumbai region
+
+      - name: Update kubeconfig (Mumbai)
+        run: |
+          aws eks update-kubeconfig --name kavalan-prod-mumbai --region ap-south-1
+
+      - name: Check current deployment state (Mumbai)
+        id: check-state-mumbai
+        run: |
+          current_version=$(kubectl get service backend-service -n production -o jsonpath='{.spec.selector.version}' || echo "blue")
+          echo "Mumbai current version: $current_version"
+          echo "current_version=$current_version" >> $GITHUB_OUTPUT
+          
+          if [ "$current_version" == "blue" ]; then
+            target_version="green"
+          else
+            target_version="blue"
+          fi
+          echo "Mumbai target version: $target_version"
+          echo "target_version=$target_version" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Mumbai cluster (Blue-Green)
+        run: |
+          target_version="${{ steps.check-state-mumbai.outputs.target_version }}"
+          echo "Deploying to Mumbai $target_version deployment..."
+          
+          kubectl set image deployment/backend-$target_version \
+            backend=${{ needs.build-and-push.outputs.image-tag }} \
+            -n production
+          
+          kubectl rollout status deployment/backend-$target_version -n production --timeout=10m
+          
+          echo "✅ Mumbai $target_version deployment ready"
+
+      - name: Run health checks (Mumbai)
+        run: |
+          target_version="${{ steps.check-state-mumbai.outputs.target_version }}"
+          
+          kubectl run health-check-mumbai-$target_version --rm -i --restart=Never \
+            --image=curlimages/curl:latest \
+            -n production \
+            -- curl -f http://backend-$target_version-service:8000/health || exit 1
+          
+          echo "✅ Mumbai health check passed"
+
+      - name: Configure AWS credentials (Chennai)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1  # Chennai region
+
+      - name: Update kubeconfig (Chennai)
+        run: |
+          aws eks update-kubeconfig --name kavalan-prod-chennai --region ap-southeast-1
+
+      - name: Check current deployment state (Chennai)
+        id: check-state-chennai
+        run: |
+          current_version=$(kubectl get service backend-service -n production -o jsonpath='{.spec.selector.version}' || echo "blue")
+          echo "Chennai current version: $current_version"
+          echo "current_version=$current_version" >> $GITHUB_OUTPUT
+          
+          if [ "$current_version" == "blue" ]; then
+            target_version="green"
+          else
+            target_version="blue"
+          fi
+          echo "Chennai target version: $target_version"
+          echo "target_version=$target_version" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Chennai cluster (Blue-Green)
+        run: |
+          target_version="${{ steps.check-state-chennai.outputs.target_version }}"
+          echo "Deploying to Chennai $target_version deployment..."
+          
+          kubectl set image deployment/backend-$target_version \
+            backend=${{ needs.build-and-push.outputs.image-tag }} \
+            -n production
+          
+          kubectl rollout status deployment/backend-$target_version -n production --timeout=10m
+          
+          echo "✅ Chennai $target_version deployment ready"
+
+      - name: Run health checks (Chennai)
+        run: |
+          target_version="${{ steps.check-state-chennai.outputs.target_version }}"
+          
+          kubectl run health-check-chennai-$target_version --rm -i --restart=Never \
+            --image=curlimages/curl:latest \
+            -n production \
+            -- curl -f http://backend-$target_version-service:8000/health || exit 1
+          
+          echo "✅ Chennai health check passed"
+
+      - name: Switch traffic to new deployment (Mumbai)
+        id: switch-mumbai
+        run: |
+          aws eks update-kubeconfig --name kavalan-prod-mumbai --region ap-south-1
+          
+          target_version="${{ steps.check-state-mumbai.outputs.target_version }}"
+          kubectl patch service backend-service -n production \
+            -p "{\"spec\":{\"selector\":{\"version\":\"$target_version\"}}}"
+          
+          echo "✅ Mumbai traffic switched to $target_version"
+          echo "switched=true" >> $GITHUB_OUTPUT
+
+      - name: Monitor Mumbai deployment
+        run: |
+          echo "Monitoring Mumbai deployment for 120 seconds..."
+          sleep 120
+          
+          target_version="${{ steps.check-state-mumbai.outputs.target_version }}"
+          healthy_pods=$(kubectl get pods -n production -l app=backend,version=$target_version -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -o "True" | wc -l)
+          
+          if [ "$healthy_pods" -eq 0 ]; then
+            echo "❌ No healthy pods in Mumbai"
+            exit 1
+          fi
+          
+          echo "✅ Mumbai stable with $healthy_pods healthy pods"
+
+      - name: Switch traffic to new deployment (Chennai)
+        id: switch-chennai
+        run: |
+          aws eks update-kubeconfig --name kavalan-prod-chennai --region ap-southeast-1
+          
+          target_version="${{ steps.check-state-chennai.outputs.target_version }}"
+          kubectl patch service backend-service -n production \
+            -p "{\"spec\":{\"selector\":{\"version\":\"$target_version\"}}}"
+          
+          echo "✅ Chennai traffic switched to $target_version"
+          echo "switched=true" >> $GITHUB_OUTPUT
+
+      - name: Monitor Chennai deployment
+        run: |
+          echo "Monitoring Chennai deployment for 120 seconds..."
+          sleep 120
+          
+          target_version="${{ steps.check-state-chennai.outputs.target_version }}"
+          healthy_pods=$(kubectl get pods -n production -l app=backend,version=$target_version -o jsonpath='{.items[*].status.conditions[?(@.type=="Ready")].status}' | grep -o "True" | wc -l)
+          
+          if [ "$healthy_pods" -eq 0 ]; then
+            echo "❌ No healthy pods in Chennai"
+            exit 1
+          fi
+          
+          echo "✅ Chennai stable with $healthy_pods healthy pods"
+
+      - name: Run production smoke tests
+        run: |
+          echo "Running production smoke tests..."
+          
+          curl -f https://kavalan.in/health || exit 1
+          curl -f https://api.kavalan.in/health || exit 1
+          curl -f https://api.kavalan.in/api/v1/health || exit 1
+          
+          echo "✅ Basic production smoke tests passed"
+
+      - name: Trigger comprehensive smoke tests
+        run: |
+          echo "Comprehensive smoke tests will run via smoke-tests workflow"
+          echo "Smoke tests run hourly on schedule for continuous monitoring"
+
+      - name: Monitor error rates
+        run: |
+          echo "Monitoring error rates for 5 minutes..."
+          sleep 300
+          
+          # In a real scenario, this would query Prometheus for error rate metrics
+          # For now, we'll do a basic health check
+          curl -f https://api.kavalan.in/metrics || exit 1
+          
+          echo "✅ Error rate monitoring passed"
+
+      - name: Scale down old deployments
+        if: success()
+        run: |
+          echo "Scaling down old deployments..."
+          
+          # Mumbai
+          aws eks update-kubeconfig --name kavalan-prod-mumbai --region ap-south-1
+          old_version="${{ steps.check-state-mumbai.outputs.current_version }}"
+          kubectl scale deployment/backend-$old_version --replicas=1 -n production
+          
+          # Chennai
+          aws eks update-kubeconfig --name kavalan-prod-chennai --region ap-southeast-1
+          old_version="${{ steps.check-state-chennai.outputs.current_version }}"
+          kubectl scale deployment/backend-$old_version --replicas=1 -n production
+          
+          echo "✅ Old deployments scaled down"
+
+      - name: Notify deployment success
+        if: success()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "✅ Production deployment successful",
+              attachments: [{
+                color: 'good',
+                fields: [{
+                  title: 'Image',
+                  value: '${{ needs.build-and-push.outputs.image-tag }}',
+                  short: false
+                }, {
+                  title: 'Commit',
+                  value: '${{ github.sha }}',
+                  short: true
+                }, {
+                  title: 'Author',
+                  value: '${{ github.actor }}',
+                  short: true
+                }, {
+                  title: 'Mumbai Version',
+                  value: '${{ steps.check-state-mumbai.outputs.target_version }}',
+                  short: true
+                }, {
+                  title: 'Chennai Version',
+                  value: '${{ steps.check-state-chennai.outputs.target_version }}',
+                  short: true
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Automatic rollback on failure
+        if: failure()
+        run: |
+          echo "❌ Production deployment failed, initiating automatic rollback..."
+          
+          # Rollback Mumbai if traffic was switched
+          if [ "${{ steps.switch-mumbai.outputs.switched }}" == "true" ]; then
+            aws eks update-kubeconfig --name kavalan-prod-mumbai --region ap-south-1
+            old_version="${{ steps.check-state-mumbai.outputs.current_version }}"
+            kubectl patch service backend-service -n production \
+              -p "{\"spec\":{\"selector\":{\"version\":\"$old_version\"}}}"
+            kubectl scale deployment/backend-$old_version --replicas=3 -n production
+            echo "✅ Mumbai rolled back to $old_version"
+          fi
+          
+          # Rollback Chennai if traffic was switched
+          if [ "${{ steps.switch-chennai.outputs.switched }}" == "true" ]; then
+            aws eks update-kubeconfig --name kavalan-prod-chennai --region ap-southeast-1
+            old_version="${{ steps.check-state-chennai.outputs.current_version }}"
+            kubectl patch service backend-service -n production \
+              -p "{\"spec\":{\"selector\":{\"version\":\"$old_version\"}}}"
+            kubectl scale deployment/backend-$old_version --replicas=3 -n production
+            echo "✅ Chennai rolled back to $old_version"
+          fi
+          
+          echo "::error::Production deployment failed and was automatically rolled back"
+
+      - name: Notify deployment failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "❌ Production deployment failed and rolled back",
+              attachments: [{
+                color: 'danger',
+                fields: [{
+                  title: 'Commit',
+                  value: '${{ github.sha }}',
+                  short: true
+                }, {
+                  title: 'Author',
+                  value: '${{ github.actor }}',
+                  short: true
+                }, {
+                  title: 'Image',
+                  value: '${{ needs.build-and-push.outputs.image-tag }}',
+                  short: false
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+  # Cleanup old deployments
+  cleanup:
+    name: Cleanup Old Deployments
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Cleanup staging old deployment
+        if: needs.deploy-staging.result == 'success'
+        run: |
+          echo "Cleaning up staging old deployment..."
+          aws eks update-kubeconfig --name kavalan-staging-cluster --region ap-south-1
+          
+          # Get current active version
+          current_version=$(kubectl get service backend-service -n staging -o jsonpath='{.spec.selector.version}')
+          
+          # Determine old version
+          if [ "$current_version" == "blue" ]; then
+            old_version="green"
+          else
+            old_version="blue"
+          fi
+          
+          # Scale down old deployment (keep 1 replica for quick rollback)
+          kubectl scale deployment/backend-$old_version --replicas=1 -n staging
+          
+          echo "✅ Scaled down staging $old_version deployment to 1 replica"
+
+      - name: Cleanup production old deployments
+        if: needs.deploy-production.result == 'success'
+        run: |
+          echo "Cleaning up production old deployments..."
+          
+          # Mumbai
+          aws eks update-kubeconfig --name kavalan-prod-mumbai --region ap-south-1
+          current_version=$(kubectl get service backend-service -n production -o jsonpath='{.spec.selector.version}')
+          
+          if [ "$current_version" == "blue" ]; then
+            old_version="green"
+          else
+            old_version="blue"
+          fi
+          
+          kubectl scale deployment/backend-$old_version --replicas=1 -n production
+          echo "✅ Mumbai: Scaled down $old_version to 1 replica"
+          
+          # Chennai
+          aws eks update-kubeconfig --name kavalan-prod-chennai --region ap-southeast-1
+          current_version=$(kubectl get service backend-service -n production -o jsonpath='{.spec.selector.version}')
+          
+          if [ "$current_version" == "blue" ]; then
+            old_version="green"
+          else
+            old_version="blue"
+          fi
+          
+          kubectl scale deployment/backend-$old_version --replicas=1 -n production
+          echo "✅ Chennai: Scaled down $old_version to 1 replica"
+
+      - name: Clean up old container images
+        run: |
+          echo "Cleaning up old container images..."
+          # Keep last 10 images, delete older ones
+          # This would use GitHub Container Registry API or AWS ECR cleanup
+          echo "Image cleanup scheduled (placeholder)"

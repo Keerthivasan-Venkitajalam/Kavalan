@@ -1,0 +1,396 @@
+name: CI - Lint, Test, Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Extension CI
+  extension-ci:
+    name: Extension - Lint, Test, Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/extension
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: packages/extension/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run type check
+        run: npm run type-check
+
+      - name: Run tests
+        run: npm run test
+
+      - name: Generate coverage report
+        run: npm run test -- --coverage --coverageReporters=text --coverageReporters=lcov
+
+      - name: Check coverage threshold (80%)
+        run: |
+          # Extract coverage percentage from output
+          echo "Checking test coverage threshold..."
+          npm run test -- --coverage --coverageReporters=text | tee coverage.txt
+          
+          # Check if coverage meets 80% threshold
+          # This will be enforced by jest configuration
+          echo "✅ Coverage check complete"
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-build
+          path: packages/extension/dist
+          retention-days: 7
+
+  # Backend CI
+  backend-ci:
+    name: Backend - Lint, Test, Build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kavalan_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: kavalan_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      mongodb:
+        image: mongo:7
+        env:
+          MONGO_INITDB_ROOT_USERNAME: kavalan_test
+          MONGO_INITDB_ROOT_PASSWORD: test_password
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 27017:27017
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: |
+            packages/backend/requirements.txt
+            packages/backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Run linter (ruff)
+        run: |
+          pip install ruff
+          ruff check app/ tests/
+
+      - name: Run type checker (mypy)
+        run: |
+          pip install mypy
+          mypy app/ --ignore-missing-imports
+        continue-on-error: true
+
+      - name: Setup test environment
+        env:
+          DATABASE_URL: postgresql://kavalan_test:test_password@localhost:5432/kavalan_test
+          MONGODB_URL: mongodb://kavalan_test:test_password@localhost:27017/kavalan_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test_secret_key_for_ci
+          ENCRYPTION_KEY: test_encryption_key_32_bytes_long
+        run: |
+          # Initialize PostgreSQL schema
+          PGPASSWORD=test_password psql -h localhost -U kavalan_test -d kavalan_test -f db/init-postgres.sql || true
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgresql://kavalan_test:test_password@localhost:5432/kavalan_test
+          MONGODB_URL: mongodb://kavalan_test:test_password@localhost:27017/kavalan_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test_secret_key_for_ci
+          ENCRYPTION_KEY: test_encryption_key_32_bytes_long
+        run: |
+          echo "Running unit tests..."
+          pytest tests/ -v --cov=app --cov-report=xml --cov-report=term --cov-report=html -m "not integration" --tb=short
+
+      - name: Run property-based tests
+        env:
+          DATABASE_URL: postgresql://kavalan_test:test_password@localhost:5432/kavalan_test
+          MONGODB_URL: mongodb://kavalan_test:test_password@localhost:27017/kavalan_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test_secret_key_for_ci
+          ENCRYPTION_KEY: test_encryption_key_32_bytes_long
+        run: |
+          echo "Running property-based tests..."
+          pytest tests/ -v -k "property" --hypothesis-show-statistics --tb=short
+
+      - name: Check code coverage threshold (80%)
+        run: |
+          echo "Checking code coverage threshold..."
+          coverage report --fail-under=80
+          echo "✅ Code coverage meets 80% threshold"
+        # Fail the build if coverage is below 80%
+
+      - name: Generate coverage badge
+        run: |
+          coverage_percent=$(coverage report | grep TOTAL | awk '{print $4}' | sed 's/%//')
+          echo "Coverage: ${coverage_percent}%"
+          echo "COVERAGE=${coverage_percent}" >> $GITHUB_ENV
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        with:
+          file: packages/backend/coverage.xml
+          flags: backend
+          name: backend-coverage
+        continue-on-error: true
+
+      - name: Build Docker image
+        run: |
+          docker build -t kavalan-backend:${{ github.sha }} .
+
+      - name: Save Docker image
+        run: |
+          docker save kavalan-backend:${{ github.sha }} | gzip > backend-image.tar.gz
+
+      - name: Upload Docker image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-docker-image
+          path: packages/backend/backend-image.tar.gz
+          retention-days: 7
+
+  # Integration Tests
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [extension-ci, backend-ci]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kavalan_test
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: kavalan_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+      mongodb:
+        image: mongo:7
+        env:
+          MONGO_INITDB_ROOT_USERNAME: kavalan_test
+          MONGO_INITDB_ROOT_PASSWORD: test_password
+        options: >-
+          --health-cmd "mongosh --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 27017:27017
+
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install backend dependencies
+        working-directory: packages/backend
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Setup test environment
+        working-directory: packages/backend
+        env:
+          DATABASE_URL: postgresql://kavalan_test:test_password@localhost:5432/kavalan_test
+          MONGODB_URL: mongodb://kavalan_test:test_password@localhost:27017/kavalan_test
+          REDIS_URL: redis://localhost:6379/0
+        run: |
+          PGPASSWORD=test_password psql -h localhost -U kavalan_test -d kavalan_test -f db/init-postgres.sql || true
+
+      - name: Run integration tests
+        working-directory: packages/backend
+        env:
+          DATABASE_URL: postgresql://kavalan_test:test_password@localhost:5432/kavalan_test
+          MONGODB_URL: mongodb://kavalan_test:test_password@localhost:27017/kavalan_test
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test_secret_key_for_ci
+          ENCRYPTION_KEY: test_encryption_key_32_bytes_long
+        run: |
+          echo "Running integration tests..."
+          pytest tests/ -v -m "integration" --tb=short --junit-xml=integration-results.xml
+
+      - name: Upload integration test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: packages/backend/integration-results.xml
+
+  # Test Summary
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [extension-ci, backend-ci, integration-tests]
+    if: always()
+
+    steps:
+      - name: Download test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: test-results
+        continue-on-error: true
+
+      - name: Generate test summary
+        run: |
+          echo "# Test Execution Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.extension-ci.result }}" == "success" ]; then
+            echo "✅ Extension Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Extension Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.backend-ci.result }}" == "success" ]; then
+            echo "✅ Backend Unit Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+            echo "✅ Backend Property Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Backend Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.integration-tests.result }}" == "success" ]; then
+            echo "✅ Integration Tests: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Integration Tests: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Coverage Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Backend coverage threshold: 80% (enforced)" >> $GITHUB_STEP_SUMMARY
+          echo "- Extension coverage threshold: 80% (enforced)" >> $GITHUB_STEP_SUMMARY
+
+  # Security Scan
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: [extension-ci, backend-ci]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+        continue-on-error: true
+
+  # Summary
+  ci-summary:
+    name: CI Summary
+    runs-on: ubuntu-latest
+    needs: [extension-ci, backend-ci, integration-tests, test-summary, security-scan]
+    if: always()
+
+    steps:
+      - name: Check CI status
+        run: |
+          if [ "${{ needs.extension-ci.result }}" != "success" ] || \
+             [ "${{ needs.backend-ci.result }}" != "success" ] || \
+             [ "${{ needs.integration-tests.result }}" != "success" ]; then
+            echo "❌ CI failed - check logs above"
+            echo "Extension CI: ${{ needs.extension-ci.result }}"
+            echo "Backend CI: ${{ needs.backend-ci.result }}"
+            echo "Integration Tests: ${{ needs.integration-tests.result }}"
+            exit 1
+          else
+            echo "✅ All CI checks passed"
+            echo "- Extension tests: PASSED"
+            echo "- Backend unit tests: PASSED"
+            echo "- Backend property tests: PASSED"
+            echo "- Integration tests: PASSED"
+            echo "- Code coverage: ≥80%"
+          fi

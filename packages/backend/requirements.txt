@@ -1,0 +1,43 @@
+# Web Framework
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+
+# Task Queue
+celery==5.3.6
+redis==5.0.1
+
+# Database
+asyncpg==0.29.0
+motor==3.3.2
+psycopg2-binary==2.9.9
+
+# AI/ML
+openai-whisper==20231117
+google-generativeai==0.4.0
+mediapipe==0.10.11
+numpy==1.26.4
+pillow==10.2.0
+
+# Security
+cryptography==42.0.5
+pyjwt==2.8.0
+python-jose[cryptography]==3.3.0
+
+# Monitoring
+prometheus-client==0.20.0
+opentelemetry-api==1.23.0
+opentelemetry-sdk==1.23.0
+opentelemetry-instrumentation-fastapi==0.44b0
+opentelemetry-instrumentation-celery==0.44b0
+opentelemetry-instrumentation-redis==0.44b0
+opentelemetry-instrumentation-requests==0.44b0
+opentelemetry-exporter-otlp-proto-grpc==1.23.0
+
+# Utilities
+python-dotenv==1.0.1
+pydantic==2.6.3
+pydantic-settings==2.2.1
+
+# PDF Generation
+reportlab==4.0.9

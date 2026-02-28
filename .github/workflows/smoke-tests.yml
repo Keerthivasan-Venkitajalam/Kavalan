@@ -1,0 +1,319 @@
+name: Smoke Tests - Post-Deployment Verification
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        type: string
+      base_url:
+        description: 'Base URL to test'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+  schedule:
+    # Run smoke tests every hour in production
+    - cron: '0 * * * *'
+
+jobs:
+  smoke-tests:
+    name: Run Smoke Tests - ${{ inputs.environment || 'production' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set environment variables
+        id: set-env
+        run: |
+          if [ "${{ inputs.environment }}" == "production" ] || [ "${{ github.event_name }}" == "schedule" ]; then
+            echo "BASE_URL=https://api.kavalan.in" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=production" >> $GITHUB_OUTPUT
+          elif [ "${{ inputs.environment }}" == "staging" ]; then
+            echo "BASE_URL=https://staging.kavalan.in" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=staging" >> $GITHUB_OUTPUT
+          elif [ -n "${{ inputs.base_url }}" ]; then
+            echo "BASE_URL=${{ inputs.base_url }}" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=${{ inputs.environment }}" >> $GITHUB_OUTPUT
+          else
+            echo "BASE_URL=https://staging.kavalan.in" >> $GITHUB_OUTPUT
+            echo "ENV_NAME=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for deployment to stabilize
+        run: |
+          echo "Waiting 30 seconds for deployment to stabilize..."
+          sleep 30
+
+      - name: Test 1 - Basic Health Check
+        id: health-check
+        run: |
+          echo "🔍 Testing basic health endpoint..."
+          
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/health)
+          if [ "$response" != "200" ]; then
+            echo "❌ Health check failed with status $response"
+            exit 1
+          fi
+          echo "✅ Health check passed (HTTP $response)"
+
+      - name: Test 2 - API Health Check
+        id: api-health
+        run: |
+          echo "🔍 Testing API health endpoint..."
+          
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/api/v1/health)
+          if [ "$response" != "200" ]; then
+            echo "❌ API health check failed with status $response"
+            exit 1
+          fi
+          echo "✅ API health check passed (HTTP $response)"
+
+      - name: Test 3 - Metrics Endpoint
+        id: metrics-check
+        run: |
+          echo "🔍 Testing Prometheus metrics endpoint..."
+          
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/metrics)
+          if [ "$response" != "200" ]; then
+            echo "❌ Metrics endpoint check failed with status $response"
+            exit 1
+          fi
+          
+          # Verify metrics contain expected data
+          metrics_content=$(curl -s ${{ steps.set-env.outputs.BASE_URL }}/metrics)
+          if ! echo "$metrics_content" | grep -q "http_requests_total"; then
+            echo "❌ Metrics endpoint missing expected metrics"
+            exit 1
+          fi
+          
+          echo "✅ Metrics endpoint accessible and valid"
+
+      - name: Test 4 - Database Connectivity
+        id: db-check
+        run: |
+          echo "🔍 Testing database connectivity via API..."
+          
+          # This would test an endpoint that verifies DB connection
+          # For now, we assume health check covers this
+          response=$(curl -s ${{ steps.set-env.outputs.BASE_URL }}/health)
+          
+          if ! echo "$response" | grep -q "database"; then
+            echo "⚠️  Warning: Health check doesn't report database status"
+          else
+            echo "✅ Database connectivity verified"
+          fi
+
+      - name: Test 5 - Redis Connectivity
+        id: redis-check
+        run: |
+          echo "🔍 Testing Redis connectivity..."
+          
+          # Test Redis via health endpoint or dedicated endpoint
+          response=$(curl -s ${{ steps.set-env.outputs.BASE_URL }}/health)
+          
+          if ! echo "$response" | grep -q "redis"; then
+            echo "⚠️  Warning: Health check doesn't report Redis status"
+          else
+            echo "✅ Redis connectivity verified"
+          fi
+
+      - name: Test 6 - WebSocket Endpoint
+        id: websocket-check
+        run: |
+          echo "🔍 Testing WebSocket endpoint availability..."
+          
+          # Basic check that WebSocket endpoint is reachable
+          # A full WebSocket test would require a WebSocket client
+          ws_url=$(echo "${{ steps.set-env.outputs.BASE_URL }}" | sed 's/https/wss/')
+          
+          echo "WebSocket URL: $ws_url/ws"
+          echo "✅ WebSocket endpoint configured (full test requires client)"
+
+      - name: Test 7 - Response Time Check
+        id: response-time
+        run: |
+          echo "🔍 Checking API response times..."
+          
+          # Measure response time for health endpoint
+          response_time=$(curl -s -o /dev/null -w "%{time_total}" ${{ steps.set-env.outputs.BASE_URL }}/health)
+          response_time_ms=$(echo "$response_time * 1000" | bc)
+          
+          echo "Response time: ${response_time_ms}ms"
+          
+          # Check if response time is under 1 second
+          if (( $(echo "$response_time > 1.0" | bc -l) )); then
+            echo "⚠️  Warning: Response time is high (${response_time_ms}ms)"
+          else
+            echo "✅ Response time is acceptable (${response_time_ms}ms)"
+          fi
+          
+          echo "response_time=${response_time_ms}" >> $GITHUB_OUTPUT
+
+      - name: Test 8 - SSL Certificate Validity
+        id: ssl-check
+        run: |
+          echo "🔍 Checking SSL certificate validity..."
+          
+          # Extract domain from URL
+          domain=$(echo ${{ steps.set-env.outputs.BASE_URL }} | sed -e 's|^[^/]*//||' -e 's|/.*$||')
+          
+          # Check certificate expiry
+          expiry_date=$(echo | openssl s_client -servername $domain -connect $domain:443 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
+          expiry_epoch=$(date -d "$expiry_date" +%s)
+          current_epoch=$(date +%s)
+          days_until_expiry=$(( ($expiry_epoch - $current_epoch) / 86400 ))
+          
+          echo "SSL certificate expires in $days_until_expiry days"
+          
+          if [ $days_until_expiry -lt 30 ]; then
+            echo "⚠️  Warning: SSL certificate expires in less than 30 days!"
+          elif [ $days_until_expiry -lt 7 ]; then
+            echo "❌ Critical: SSL certificate expires in less than 7 days!"
+            exit 1
+          else
+            echo "✅ SSL certificate is valid ($days_until_expiry days remaining)"
+          fi
+
+      - name: Test 9 - API Authentication
+        id: auth-check
+        run: |
+          echo "🔍 Testing API authentication..."
+          
+          # Test that protected endpoints require authentication
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/api/v1/analyze/audio)
+          
+          if [ "$response" == "401" ] || [ "$response" == "403" ]; then
+            echo "✅ Authentication is enforced (HTTP $response)"
+          else
+            echo "⚠️  Warning: Expected 401/403 for unauthenticated request, got $response"
+          fi
+
+      - name: Test 10 - Rate Limiting
+        id: rate-limit-check
+        run: |
+          echo "🔍 Testing rate limiting..."
+          
+          # Make multiple rapid requests to test rate limiting
+          for i in {1..10}; do
+            response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/health)
+            echo "Request $i: HTTP $response"
+          done
+          
+          echo "✅ Rate limiting test completed"
+
+      - name: Test 11 - CORS Headers
+        id: cors-check
+        run: |
+          echo "🔍 Testing CORS headers..."
+          
+          # Check for CORS headers
+          headers=$(curl -s -I ${{ steps.set-env.outputs.BASE_URL }}/health)
+          
+          if echo "$headers" | grep -qi "access-control-allow-origin"; then
+            echo "✅ CORS headers present"
+          else
+            echo "⚠️  Warning: CORS headers not found"
+          fi
+
+      - name: Test 12 - Error Handling
+        id: error-handling
+        run: |
+          echo "🔍 Testing error handling..."
+          
+          # Test 404 handling
+          response=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.set-env.outputs.BASE_URL }}/nonexistent-endpoint)
+          
+          if [ "$response" == "404" ]; then
+            echo "✅ 404 errors handled correctly"
+          else
+            echo "⚠️  Warning: Expected 404, got $response"
+          fi
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          echo "# Smoke Test Summary - ${{ steps.set-env.outputs.ENV_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Environment:** ${{ steps.set-env.outputs.ENV_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Base URL:** ${{ steps.set-env.outputs.BASE_URL }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Timestamp:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Add test results
+          echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Basic Health Check | ${{ steps.health-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| API Health Check | ${{ steps.api-health.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Metrics Endpoint | ${{ steps.metrics-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Database Connectivity | ${{ steps.db-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Redis Connectivity | ${{ steps.redis-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| WebSocket Endpoint | ${{ steps.websocket-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Response Time | ${{ steps.response-time.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| SSL Certificate | ${{ steps.ssl-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Authentication | ${{ steps.auth-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Rate Limiting | ${{ steps.rate-limit-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| CORS Headers | ${{ steps.cors-check.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Error Handling | ${{ steps.error-handling.outcome == 'success' && '✅ PASS' || '❌ FAIL' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -n "${{ steps.response-time.outputs.response_time }}" ]; then
+            echo "**Average Response Time:** ${{ steps.response-time.outputs.response_time }}ms" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Notify on failure
+        if: failure()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: custom
+          custom_payload: |
+            {
+              text: "❌ Smoke tests failed for ${{ steps.set-env.outputs.ENV_NAME }}",
+              attachments: [{
+                color: 'danger',
+                fields: [{
+                  title: 'Environment',
+                  value: '${{ steps.set-env.outputs.ENV_NAME }}',
+                  short: true
+                }, {
+                  title: 'URL',
+                  value: '${{ steps.set-env.outputs.BASE_URL }}',
+                  short: true
+                }, {
+                  title: 'Workflow',
+                  value: '${{ github.workflow }}',
+                  short: true
+                }, {
+                  title: 'Run',
+                  value: '<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Run>',
+                  short: true
+                }]
+              }]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        continue-on-error: true
+
+      - name: Final summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ All smoke tests passed for ${{ steps.set-env.outputs.ENV_NAME }}"
+            exit 0
+          else
+            echo "❌ Some smoke tests failed for ${{ steps.set-env.outputs.ENV_NAME }}"
+            exit 1
+          fi

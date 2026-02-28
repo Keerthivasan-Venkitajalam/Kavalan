@@ -1,250 +1,636 @@
-# 🛡️ Kavalan Lite
+<div align="center">
 
-**Real-time AI-powered scam call detection to protect citizens from "Digital Arrest" fraud**
+# Kavalan (காவலன்)
 
-[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://python.org)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.28+-red.svg)](https://streamlit.io)
-[![Google Gemini](https://img.shields.io/badge/Gemini-2.5_Flash-orange.svg)](https://cloud.google.com/vertex-ai)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+### Real-Time Digital Arrest Scam Detection During Video Calls
 
----
+**AI-powered browser extension protecting users from Digital Arrest scams through multimodal threat analysis**
 
-## 🎯 The Problem We're Solving
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg?style=for-the-badge)](https://github.com/Keerthivasan-Venkitajalam/Kavalan)
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.12-yellow?style=for-the-badge&logo=python)](https://python.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-009688?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com)
+[![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker)](https://docker.com)
 
-**"Digital Arrest" scams** have become a massive crisis in India. Fraudsters impersonate police officers, CBI agents, or government officials on video calls, claiming victims are implicated in crimes like money laundering or drug trafficking. They create a fake sense of urgency, demand immediate payment, and threaten arrest—all while the victim is held hostage on a video call for hours.
+[About](#about-the-project) • [Architecture](#system-architecture) • [Features](#key-features) • [Getting Started](#getting-started) • [Tech Stack](#tech-stack) • [Team](#team)
 
-**The numbers are staggering:**
-- ₹120+ crore lost to digital arrest scams in 2024 alone
-- Victims include doctors, engineers, professors, and retired officials
-- Average loss per victim: ₹5-50 lakhs
-- Many victims suffer severe psychological trauma
-
-**Kavalan Lite fights back.**
+</div>
 
 ---
 
-## 💡 What is Kavalan Lite?
+## 🏆 Hackathon Achievement
 
-Kavalan (meaning "Guardian" in Tamil) is a browser-based real-time scam detection system that analyzes video calls using multimodal AI. It works silently in the background during any video call and alerts you the moment it detects scam patterns.
+**2nd Prize Winner** at **GenAI Hackathon ML.Cbe 2025**
 
-### How It Works
+Organized by **AI Tamil Nadu** (formerly AI Coimbatore) in collaboration with:
+- **Nunnari Labs**
+- **DeepWeaver.ai**
+- **Google for Developers**
+
+**Team Thudakkam** developed Kavalan to combat the rising threat of Digital Arrest scams targeting vulnerable populations in India.
+
+---
+
+## About the Project
+
+**Kavalan** (காவலன் - meaning "Guardian" in Tamil) is a production-ready browser extension that provides real-time protection against Digital Arrest scams during video conferencing sessions. Using advanced multimodal AI analysis, Kavalan monitors audio, visual, and behavioral cues to detect scam patterns and alert users before they become victims.
+
+### The Problem: Digital Arrest Scams
+
+Digital Arrest scams have become a major threat in India, with fraudsters impersonating law enforcement officials during video calls to extort money from victims. These scams exploit:
+- **Authority intimidation**: Fake police/CBI uniforms and badges
+- **Psychological pressure**: Threats of arrest and legal action
+- **Urgency tactics**: Demands for immediate payment
+- **Deepfake technology**: AI-generated videos of officials
+
+Traditional security solutions fail because these scams happen in real-time during legitimate video conferencing platforms (Google Meet, Zoom, Microsoft Teams).
+
+### Our Solution
+
+Kavalan transforms passive video calls into actively monitored sessions with:
+
+- **Real-time threat detection** (<1 second latency)
+- **Multimodal AI analysis** (audio + visual + liveness detection)
+- **Automatic evidence collection** (Digital FIR generation)
+- **Multi-language support** (Hindi, English, Tamil, Telugu, Malayalam, Kannada)
+- **DPDP Act 2023 compliance** (data protection and privacy)
+- **Stress-aware UI** optimized for elderly users under duress
+
+---
+
+## System Architecture
+
+Kavalan follows a distributed microservices architecture with browser extension frontend and scalable backend services.
 
 ```
-📹 Video Feed → 🔍 Multimodal Analysis → ⚠️ Real-time Alerts
+┌─────────────────────────────────────────────────────────────────┐
+│                    Video Conferencing Platform                   │
+│              (Google Meet / Zoom / Microsoft Teams)              │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             │ WebRTC Media Streams
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Browser Extension                           │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐         │
+│  │   Content    │  │  Background  │  │    Popup     │         │
+│  │   Script     │──│   Service    │──│      UI      │         │
+│  │ (Injection)  │  │   Worker     │  │  (Dashboard) │         │
+│  └──────────────┘  └──────────────┘  └──────────────┘         │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             │ HTTPS + AES-256-GCM
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      API Gateway (NGINX)                         │
+│                  (Load Balancer + Rate Limiter)                  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Message Queue (Redis)                         │
+│                    Task Broker (Celery)                          │
+└─────┬───────────────────────┬───────────────────────┬───────────┘
+      │                       │                       │
+      ▼                       ▼                       ▼
+┌──────────────┐    ┌──────────────┐      ┌──────────────┐
+│    Audio     │    │    Visual    │      │  Liveness    │
+│ Transcriber  │    │   Analyzer   │      │  Detector    │
+│  (Whisper)   │    │   (Gemini)   │      │ (MediaPipe)  │
+│   Workers    │    │   Workers    │      │   Workers    │
+└──────┬───────┘    └──────┬───────┘      └──────┬───────┘
+       │                   │                     │
+       └───────────────────┼─────────────────────┘
+                           │
+                           ▼
+                  ┌──────────────┐
+                  │    Threat    │
+                  │   Analyzer   │
+                  │   (Fusion)   │
+                  └──────┬───────┘
+                         │
+         ┌───────────────┼───────────────┐
+         ▼               ▼               ▼
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  PostgreSQL  │ │   MongoDB    │ │  Prometheus  │
+│ (Structured) │ │(Unstructured)│ │  (Metrics)   │
+└──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-The system performs **three simultaneous analysis streams**:
+### Component Flow
 
-| Analysis Type | What It Detects | Technology |
-|--------------|-----------------|------------|
-| 🎙️ **Audio Intelligence** | Scam keywords, threatening language, urgency tactics | OpenAI Whisper + Keyword Engine |
-| 👁️ **Visual Analysis** | Fake police uniforms, government insignias, suspicious backgrounds | Google Gemini 2.5 Flash Vision |
-| 😰 **Liveness Detection** | Pre-recorded videos, deepfakes, victim stress indicators | MediaPipe Face Landmarker |
-
----
-
-## ✨ Key Features
-
-### 🔴 Real-time Threat Scoring
-A unified threat score (0-10) computed from audio, visual, and behavioral signals. Scores above 6.0 trigger immediate warnings.
-
-### 🎯 Keyword Intelligence
-Detects 5 categories of scam language:
-- **Legal Threats**: arrest warrant, FIR, NCB, CBI, police custody
-- **Financial Pressure**: money laundering, hawala, freeze account, transfer funds
-- **Urgency Tactics**: immediately, right now, don't disconnect, urgent
-- **Authority Claims**: senior officer, high court, government order
-- **Fear Induction**: jail, criminal case, your family, consequences
-
-### 👮 Uniform Verification
-AI-powered detection of fake government uniforms with cross-referencing against known insignia patterns.
-
-### 📊 Evidence Logging
-Automatic capture of suspicious frames, transcripts, and detection logs for reporting to authorities.
-
-### 🎬 Demo Mode
-Built-in demo video player to showcase the system's capabilities without a live call.
+1. **Media Capture**: Content script intercepts WebRTC streams from video platform
+2. **Encryption**: Background service worker encrypts audio/video chunks with AES-256-GCM
+3. **Transmission**: Encrypted data sent to API Gateway via HTTPS
+4. **Task Distribution**: API Gateway enqueues tasks to Redis/Celery
+5. **Parallel Processing**: Audio, Visual, Liveness workers process independently
+6. **Score Fusion**: Threat Analyzer combines modality scores
+7. **Alert Delivery**: Results pushed back to extension via WebSocket
+8. **Evidence Storage**: Threat events logged to PostgreSQL + MongoDB
 
 ---
 
-## 🚀 Quick Start
+## Key Features
+
+### 🛡️ Real-Time Protection
+
+- **Sub-second latency**: End-to-end threat detection in <1000ms
+- **Automatic activation**: Monitoring starts when video call begins
+- **Non-intrusive**: Runs silently in background without disrupting calls
+- **Platform support**: Google Meet, Zoom, Microsoft Teams
+
+### 🧠 Multimodal AI Analysis
+
+**Audio Analysis (OpenAI Whisper)**
+- Speech-to-text transcription with word-level timestamps
+- Keyword matching for scam patterns (authority, coercion, financial threats)
+- Speaker diarization for multi-participant calls
+- Low-confidence flagging for uncertain transcriptions
+
+**Visual Analysis (Google Gemini Vision)**
+- Uniform and badge detection (police, CBI, government)
+- Threatening visual element identification
+- On-screen text extraction (OCR)
+- Confidence scoring for each detection
+
+**Liveness Detection (MediaPipe)**
+- Facial landmark analysis (468 points)
+- Blink rate monitoring for deepfake detection
+- Head pose variance analysis
+- Stress indicator identification
+
+### 📊 Threat Fusion Engine
+
+- **Weighted score combination**: Audio (45%), Visual (35%), Liveness (20%)
+- **Confidence-weighted conflict resolution**: Handles disagreements between modalities
+- **Unified threat score**: 0-10 scale with threat levels (low/moderate/high/critical)
+- **Explainable AI**: Human-readable explanations for each threat assessment
+
+### 📝 Digital FIR Generation
+
+- **Automatic evidence collection**: Triggered when threat score ≥ 7.0
+- **Comprehensive package**: Timestamped transcripts, video frames, threat scores
+- **Chain-of-custody tracking**: Tamper-proof audit trail
+- **Legal compliance**: PDF export for law enforcement submission
+- **Cryptographic signatures**: Ensures evidence integrity
+
+### 🌐 Multi-Language Support
+
+- **6 Indian languages**: Hindi, English, Tamil, Telugu, Malayalam, Kannada
+- **Code-switching handling**: Mixed-language transcription
+- **Localized alerts**: Warnings displayed in user's preferred language
+- **Language-specific patterns**: Threat detection adapted per language
+
+### 🔒 Security & Compliance
+
+- **End-to-end encryption**: AES-256-GCM for all media transmission
+- **DPDP Act 2023 compliance**: Data protection and privacy regulations
+- **Data residency**: All data stored within Indian territory
+- **Audit logging**: Complete trail of all data access operations
+- **User consent**: Explicit opt-in required before processing
+
+### ♿ Accessibility
+
+- **Stress-aware UI**: Optimized for elderly users under duress
+- **Large fonts**: Minimum 16px with high contrast colors
+- **Screen reader support**: ARIA labels for visually impaired users
+- **Keyboard navigation**: Full functionality without mouse
+- **Simple actions**: Emergency "End Call" button prominently displayed
+
+---
+
+## Tech Stack
+
+### Frontend (Browser Extension)
+
+- **Framework**: Chrome/Firefox Extension (Manifest V3)
+- **Language**: TypeScript 5.0
+- **UI Library**: React 18 with Vite 4
+- **Styling**: Tailwind CSS 3.4
+- **State Management**: React Hooks
+- **Encryption**: Web Crypto API (AES-256-GCM)
+
+### Backend Services
+
+- **API Framework**: FastAPI (Python 3.12)
+- **Message Queue**: Redis + Celery
+- **Load Balancer**: NGINX with TLS termination
+- **Authentication**: JWT tokens
+- **Rate Limiting**: Per-user and per-IP throttling
+
+### AI/ML Models
+
+- **Audio Transcription**: OpenAI Whisper (medium model)
+- **Visual Analysis**: Google Gemini 2.5 Flash Vision API
+- **Liveness Detection**: MediaPipe Face Landmarker
+- **Embeddings**: IndicSBERT for Dravidian languages
+
+### Databases
+
+- **Structured Data**: PostgreSQL 18 (users, sessions, threat events, audit logs)
+- **Unstructured Data**: MongoDB (transcripts, video frames, evidence packages)
+- **Vector Search**: pgvector for semantic similarity
+- **Caching**: Redis for threat patterns and intermediate results
+
+### Infrastructure
+
+- **Containerization**: Docker + Docker Compose
+- **Orchestration**: Kubernetes with auto-scaling
+- **Observability**: Prometheus + Grafana + OpenTelemetry
+- **CI/CD**: GitHub Actions with blue-green deployment
+- **Cloud**: AWS Mumbai, GCP Chennai (Indian data centers)
+
+---
+
+## Getting Started
 
 ### Prerequisites
-- Python 3.11+
-- Webcam & microphone access
-- Google Cloud account (for Gemini Vision API)
 
-### Installation
+- **Docker & Docker Compose** (for simplest setup)
+- **Node.js 18+** (for frontend development)
+- **Python 3.12+** (for backend development)
+- **API Keys**:
+  - Google Gemini API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+  - OpenAI API key (optional, for Whisper cloud API)
+
+### Quick Start (Docker)
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/Kavalan-Lite.git
-cd Kavalan-Lite
+# 1. Clone the repository
+git clone https://github.com/Keerthivasan-Venkitajalam/Kavalan.git
+cd Kavalan
 
-# Create conda environment
-conda create -n kavalan python=3.11 -y
-conda activate kavalan
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
+# 2. Configure environment
 cp .env.example .env
-# Edit .env with your Google Cloud credentials
+# Add your API keys to .env:
+# - GEMINI_API_KEY=your_key_here
+# - OPENAI_API_KEY=your_key_here (optional)
+
+# 3. Start backend services (PostgreSQL, MongoDB, Redis, API)
+docker compose up -d --build
+
+# 4. Initialize databases
+docker exec kavalan-api python -m scripts.init_db
+
+# 5. Start frontend (in separate terminal)
+cd packages/extension
+npm install
+npm run dev
+
+# 6. Load extension in browser
+# Chrome: chrome://extensions/ → Load unpacked → select packages/extension/dist
+# Firefox: about:debugging → Load Temporary Add-on → select packages/extension/dist/manifest.json
+
+# 7. Open browser
+# http://localhost:8000/docs (API documentation)
+# http://localhost:8000/health (Health check)
 ```
 
-### Configuration
-
-Create a `.env` file:
-```env
-GOOGLE_CLOUD_PROJECT=your-project-id
-VERTEX_AI_LOCATION=us-central1
-GEMINI_VISION_MODEL=gemini-2.5-flash
-GOOGLE_APPLICATION_CREDENTIALS=config/vertex-ai-credentials.json
-```
-
-### Run the App
+### Verify Installation
 
 ```bash
-streamlit run app.py --server.port 8501
+# Check backend health
+curl http://localhost:8000/health/dependencies | jq
+
+# Expected response:
+# {
+#   "status": "healthy",
+#   "checks": {
+#     "database": { "status": "healthy" },
+#     "redis": { "status": "healthy" },
+#     "mongodb": { "status": "healthy" }
+#   }
+# }
 ```
 
-Open http://localhost:8501 in your browser.
-
----
-
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Kavalan Lite UI                         │
-│                    (Streamlit + WebRTC)                     │
-└─────────────────────────┬───────────────────────────────────┘
-                          │
-         ┌────────────────┼────────────────┐
-         │                │                │
-         ▼                ▼                ▼
-┌─────────────┐   ┌─────────────┐   ┌─────────────┐
-│   Audio     │   │   Visual    │   │  Liveness   │
-│  Processor  │   │  Processor  │   │  Detector   │
-│  (Whisper)  │   │  (Gemini)   │   │ (MediaPipe) │
-└──────┬──────┘   └──────┬──────┘   └──────┬──────┘
-       │                 │                 │
-       └────────────────┬┴─────────────────┘
-                        │
-                        ▼
-              ┌─────────────────┐
-              │  Fusion Engine  │
-              │  (Score: 0-10)  │
-              └────────┬────────┘
-                       │
-         ┌─────────────┼─────────────┐
-         ▼             ▼             ▼
-   ┌──────────┐  ┌──────────┐  ┌──────────┐
-   │  Alert   │  │ Evidence │  │ Reporter │
-   │  System  │  │  Logger  │  │   (DB)   │
-   └──────────┘  └──────────┘  └──────────┘
-```
-
----
-
-## 📁 Project Structure
-
-```
-Kavalan-Lite/
-├── app.py                    # Main Streamlit application
-├── modules/
-│   ├── audio_processor.py    # Whisper-based transcription & keyword detection
-│   ├── video_processor.py    # Gemini Vision & MediaPipe analysis
-│   ├── fusion.py             # Multi-signal threat scoring
-│   ├── reporter.py           # Database & logging
-│   └── evidence_logger.py    # Frame & transcript capture
-├── config/
-│   ├── scam_keywords.json    # Keyword detection rules
-│   ├── thresholds.json       # Scoring thresholds
-│   └── uniform_codes.json    # Uniform verification data
-├── models/
-│   ├── face_landmarker.task  # MediaPipe face model
-│   └── *.caffemodel          # Face detection model
-├── Videos/                   # Demo video files
-└── database/                 # SQLite detection logs
-```
-
----
-
-## 🧪 Testing
+### Development Setup
 
 ```bash
+# Backend development
+cd packages/backend
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
+pip install -r requirements-dev.txt
+
+# Run tests
+pytest tests/ -v
+
+# Run with hot reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Frontend development
+cd packages/extension
+npm install
+npm run dev  # Development build with watch mode
+npm run build  # Production build
+npm test  # Run tests
+```
+
+---
+
+## Project Structure
+
+```
+Kavalan/
+├── packages/
+│   ├── extension/              # Browser extension (TypeScript)
+│   │   ├── src/
+│   │   │   ├── background/    # Service worker
+│   │   │   ├── content/       # Content scripts
+│   │   │   ├── popup/         # React UI
+│   │   │   ├── utils/         # Encryption, storage, compression
+│   │   │   └── i18n/          # Translations
+│   │   ├── manifest.json      # Extension manifest
+│   │   └── package.json
+│   │
+│   └── backend/               # Backend services (Python)
+│       ├── app/
+│       │   ├── routes/        # API endpoints
+│       │   ├── services/      # AI inference engines
+│       │   ├── tasks/         # Celery tasks
+│       │   ├── db/            # Database access layers
+│       │   ├── middleware/    # Auth, rate limiting, metrics
+│       │   └── utils/         # Circuit breakers, caching, logging
+│       ├── tests/             # Unit + property-based tests
+│       ├── grafana/           # Monitoring dashboards
+│       ├── prometheus/        # Metrics configuration
+│       └── requirements.txt
+│
+├── .github/
+│   ├── workflows/             # CI/CD pipelines
+│   └── k8s/                   # Kubernetes manifests
+│
+├── .kiro/
+│   ├── specs/                 # Specification documents
+│   └── steering/              # Architecture guidelines
+│
+├── docker-compose.yml         # Local development setup
+├── README.md                  # This file
+└── LICENSE                    # MIT License
+```
+
+---
+
+## Configuration
+
+Kavalan is configured via environment variables in `.env`:
+
+### Required Variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `GEMINI_API_KEY` | Google Gemini API key | `AIza...` |
+| `DB_HOST` | PostgreSQL host | `localhost` |
+| `DB_PORT` | PostgreSQL port | `5432` |
+| `DB_NAME` | Database name | `kavalan` |
+| `DB_USER` | Database user | `postgres` |
+| `DB_PASSWORD` | Database password | `secure_password` |
+| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017` |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
+
+### Optional Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OPENAI_API_KEY` | OpenAI API key (for Whisper cloud) | - |
+| `LOG_LEVEL` | Logging level | `INFO` |
+| `CELERY_WORKERS` | Number of Celery workers | `4` |
+| `MAX_QUEUE_SIZE` | Maximum task queue size | `1000` |
+| `ALERT_THRESHOLD` | Threat score threshold for alerts | `7.0` |
+
+---
+
+## Testing
+
+### Backend Tests
+
+```bash
+cd packages/backend
+
 # Run all tests
-python -m pytest
+pytest tests/ -v
+
+# Run specific test categories
+pytest tests/test_audio_transcriber.py -v  # Audio tests
+pytest tests/test_visual_analyzer.py -v    # Visual tests
+pytest tests/test_liveness_detector.py -v  # Liveness tests
+pytest tests/test_threat_analyzer.py -v    # Fusion tests
+
+# Run property-based tests
+pytest tests/ -k "property" -v
+
+# Run with coverage
+pytest tests/ --cov=app --cov-report=html
+```
+
+### Frontend Tests
+
+```bash
+cd packages/extension
+
+# Run all tests
+npm test
 
 # Run specific test suites
-python -m pytest test_audio_properties.py -v
-python -m pytest test_visual_analyzer.py -v
-python -m pytest test_liveness_properties.py -v
+npm test -- platform-detector.test.ts
+npm test -- encryption.property.test.ts
+
+# Run with coverage
+npm test -- --coverage
+```
+
+### Integration Tests
+
+```bash
+# End-to-end threat detection flow
+pytest packages/backend/tests/test_e2e_threat_detection.py -v
+
+# Extension-backend communication
+pytest packages/backend/tests/test_extension_backend_integration.py -v
+
+# Parallel processing
+pytest packages/backend/tests/test_parallel_processing.py -v
 ```
 
 ---
 
-## 🎬 Demo Videos
+## Deployment
 
-The system includes pre-recorded demo videos to showcase detection capabilities:
+### Docker Production
 
-| Video | Type | Expected Detection |
-|-------|------|-------------------|
-| `Realtime Scam.mp4` | Scam simulation | High threat score, keyword alerts |
-| `Realtime.mp4` | Normal conversation | Low threat score, safe |
+```bash
+# Build and deploy
+docker compose -f docker-compose.prod.yml up -d --build
+
+# View logs
+docker logs -f kavalan-api
+docker logs -f kavalan-celery-worker
+
+# Scale workers
+docker compose -f docker-compose.prod.yml up -d --scale celery-worker=8
+```
+
+### Kubernetes
+
+```bash
+# Apply configurations
+kubectl apply -k .github/k8s/
+
+# Check status
+kubectl get pods -n kavalan
+kubectl logs -n kavalan deployment/kavalan-api
+
+# Port forward for local access
+kubectl port-forward -n kavalan svc/kavalan-api 8000:8000
+```
+
+### CI/CD Pipeline
+
+The project includes GitHub Actions workflows for:
+
+- **Continuous Integration**: Lint, test, build on every push
+- **Continuous Deployment**: Auto-deploy to staging, manual approval for production
+- **Blue-Green Deployment**: Zero-downtime releases
+- **Smoke Tests**: Post-deployment health checks
+- **Automatic Rollback**: Revert on failure
 
 ---
 
-## 🔒 Privacy & Security
+## Observability
 
-- **Local Processing**: All AI inference runs locally—no video data is sent to external servers
-- **No Recording by Default**: Video streams are analyzed in real-time and discarded
-- **Evidence Opt-in**: Screenshot capture only activates when threats are detected
-- **Open Source**: Full code transparency for security auditing
+### Prometheus Metrics
+
+Available at `/metrics`:
+
+- `kavalan_queries_total`: Total queries processed
+- `kavalan_query_duration_seconds`: Query latency histogram
+- `kavalan_threat_score`: Threat score distribution
+- `kavalan_alerts_triggered`: Alert count by severity
+- `kavalan_llm_tokens_total`: Token usage for cost tracking
+
+### Grafana Dashboards
+
+Pre-built dashboards for:
+
+- **Threat Detection Overview**: Real-time threat rates, alert distribution
+- **System Health**: CPU, memory, queue depth, error rates
+- **Service Performance**: Latency percentiles, throughput, success rates
+
+### OpenTelemetry Tracing
+
+Distributed tracing for end-to-end request flows:
+
+- Extension → API Gateway → Message Queue → Workers → Database
+- Span details for each processing stage
+- Error tracking with stack traces
 
 ---
 
-## 🤝 Contributing
+## Roadmap
 
-We welcome contributions! Whether it's adding new scam keyword patterns, improving detection accuracy, or enhancing the UI—every contribution helps protect more people.
+### Phase 1: MVP (Completed ✅)
+- Browser extension with WebRTC interception
+- Multimodal AI analysis (audio, visual, liveness)
+- Threat fusion and alerting
+- Digital FIR generation
+- Multi-language support
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+### Phase 2: Enhanced Detection (Q2 2025)
+- Advanced deepfake detection with temporal analysis
+- Behavioral pattern recognition (victim stress indicators)
+- Network analysis (call origin, IP geolocation)
+- Integration with law enforcement databases
+
+### Phase 3: Scale & Optimize (Q3 2025)
+- Edge deployment in tier-2 Indian cities
+- Model quantization for faster inference
+- Federated learning for privacy-preserving improvements
+- Mobile app for iOS/Android
+
+### Phase 4: Ecosystem (Q4 2025)
+- API for third-party integrations
+- White-label solution for enterprises
+- Community reporting platform
+- Educational resources and awareness campaigns
 
 ---
 
-## 📜 License
+## Contributing
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or enhancing AI models, your help is appreciated.
+
+### How to Contribute
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add some amazing feature'`)
+4. **Add tests** for new functionality
+5. **Run** the test suite (`pytest` and `npm test`)
+6. **Push** to the branch (`git push origin feature/amazing-feature`)
+7. **Open** a Pull Request
+
+### Development Guidelines
+
+- Follow PEP 8 (Python) and ESLint (TypeScript) style guidelines
+- Write type hints for all Python functions
+- Add docstrings for public APIs
+- Update documentation for user-facing changes
+- Keep commits atomic and well-described
+- Test both backend and frontend changes
 
 ---
 
-## 🙏 Acknowledgments
+## Team
 
-- **Google Cloud** for Vertex AI and Gemini Vision API
+<div align="center">
+
+### Team Thudakkam
+
+| Member | Role | GitHub |
+|--------|------|--------|
+| **Keerthivasan S V** | Lead Developer & AI/ML | [@Keerthivasan-Venkitajalam](https://github.com/Keerthivasan-Venkitajalam) |
+| **Naveen Babu M S** | Backend & Infrastructure | [@naveen-astra](https://github.com/naveen-astra) |
+| **B Rahul** | Frontend & Extension | [@Bat-hub-hash](https://github.com/Bat-hub-hash) |
+
+</div>
+
+---
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgments
+
+- **AI Tamil Nadu** (formerly AI Coimbatore) for organizing the hackathon
+- **Nunnari Labs**, **DeepWeaver.ai**, and **Google for Developers** for their support
 - **OpenAI** for Whisper speech recognition
-- **MediaPipe** for real-time face landmark detection
-- **Streamlit** for the amazing web framework
+- **Google** for Gemini Vision API
+- **MediaPipe** team for facial landmark detection
+- Open-source community for foundational libraries
 
 ---
 
-## 🆘 Support
+## Contact
 
-If you or someone you know has been a victim of a digital arrest scam:
+For questions, feedback, or collaboration opportunities:
 
-1. **Do not pay anything** - Real police never demand money over video calls
-2. **Disconnect the call** - You are not under any legal obligation to stay
-3. **Report to Cyber Crime**: https://cybercrime.gov.in or call 1930
-4. **File an FIR** at your local police station
+- **Email**: keerthivasan.sv@example.com
+- **GitHub Issues**: [Report Bug](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues) | [Request Feature](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues)
+- **Twitter**: [@TeamThudakkam](https://twitter.com/TeamThudakkam)
 
 ---
 
-<p align="center">
-  <b>Built with ❤️ for India's safety</b><br>
-  <i>Protecting citizens, one call at a time</i>
-</p>
+<div align="center">
+
+**Kavalan (காவலன்)** - Protecting India from Digital Arrest Scams
+
+Built with ❤️ by Team Thudakkam for GenAI Hackathon ML.Cbe 2025
+
+[⭐ Star us on GitHub](https://github.com/Keerthivasan-Venkitajalam/Kavalan) | [📖 Read the Docs](https://github.com/Keerthivasan-Venkitajalam/Kavalan/wiki) | [🐛 Report Issues](https://github.com/Keerthivasan-Venkitajalam/Kavalan/issues)
+
+</div>

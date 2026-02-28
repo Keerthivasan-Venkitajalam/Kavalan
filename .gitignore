@@ -1,12 +1,21 @@
-# Byte-compiled / optimized / DLL files
+# Kavalan .gitignore
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# API Keys and Credentials
+config/vertex-ai-credentials.json
+*.pem
+*.key
+*.crt
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -24,103 +33,117 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
+venv/
+ENV/
+env/
+.venv
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
+# Testing
+.pytest_cache/
+.coverage
 htmlcov/
 .tox/
-.nox/
-.coverage
-.coverage.*
+.hypothesis/
+*.cover
 .cache
 nosetests.xml
 coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
 *.log
-local_settings.py
-db.sqlite3
 
-# Flask stuff:
-instance/
-.webassets-cache
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log*
 
-# Scrapy stuff:
-.scrapy
+# Build outputs
+packages/extension/dist/
+packages/extension/build/
+*.js.map
+*.css.map
 
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# Project specific
-.benchmarks/
-logs/
-database/
-IMPLEMENTATION_COMPLETE.md
-DEPLOYMENT_SUCCESS.md# Credentials (DO NOT COMMIT)
-config/vertex-ai-credentials.json
-*.json.bak
-process_demo_videos.py
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 .DS_Store
-modules/audio_processor_old.py
+
+# Docker
+*.pid
+*.seed
+*.pid.lock
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+mongodb-data/
+redis-data/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*.ipynb
+
+# Model files (too large for git)
+*.pt
+*.pth
+*.onnx
+*.pb
+models/whisper-medium/
+models/mediapipe/
+
+# Monitoring data
+prometheus-data/
+grafana-data/
+
+# Secrets
+secrets/
+*.secret
+
+# Old/backup files
+*_old.py
+*_backup.py
+*.backup
+
+# Demo videos (too large)
+demo_videos/
+*.mp4
+*.avi
+*.mov
+
+# Documentation builds
+docs/_build/
+site/
+
+# Kiro internal files (keep specs and steering)
+# .kiro/
+
+# Keep important config examples
+!.env.example
+!config/example-credentials.json

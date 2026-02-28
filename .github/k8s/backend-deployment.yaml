@@ -1,0 +1,295 @@
+# Kubernetes deployment manifests for Kavalan backend
+# These are reference templates - actual deployments should be managed via Helm or Kustomize
+
+---
+# Blue Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-blue
+  namespace: production
+  labels:
+    app: kavalan-backend
+    version: blue
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kavalan-backend
+      version: blue
+  template:
+    metadata:
+      labels:
+        app: kavalan-backend
+        version: blue
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/your-org/kavalan/backend:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: database-url
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: mongodb-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: redis-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: jwt-secret
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: encryption-key
+        - name: ENVIRONMENT
+          value: "production"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      imagePullSecrets:
+      - name: ghcr-secret
+
+---
+# Green Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-green
+  namespace: production
+  labels:
+    app: kavalan-backend
+    version: green
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: kavalan-backend
+      version: green
+  template:
+    metadata:
+      labels:
+        app: kavalan-backend
+        version: green
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/your-org/kavalan/backend:latest
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: database-url
+        - name: MONGODB_URL
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: mongodb-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: redis-url
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: jwt-secret
+        - name: ENCRYPTION_KEY
+          valueFrom:
+            secretKeyRef:
+              name: kavalan-secrets
+              key: encryption-key
+        - name: ENVIRONMENT
+          value: "production"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "2000m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      imagePullSecrets:
+      - name: ghcr-secret
+
+---
+# Service (switches between blue and green)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: production
+  labels:
+    app: kavalan-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: kavalan-backend
+    version: blue  # Switch to 'green' during deployment
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+# Blue Service (for testing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-blue-service
+  namespace: production
+  labels:
+    app: kavalan-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: kavalan-backend
+    version: blue
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+# Green Service (for testing)
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-green-service
+  namespace: production
+  labels:
+    app: kavalan-backend
+spec:
+  type: ClusterIP
+  selector:
+    app: kavalan-backend
+    version: green
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: http
+
+---
+# Horizontal Pod Autoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend-blue  # Also create one for backend-green
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 50
+        periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 30
+      - type: Pods
+        value: 4
+        periodSeconds: 30
+      selectPolicy: Max
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: production
+data:
+  LOG_LEVEL: "INFO"
+  WORKERS: "4"
+  MAX_CONNECTIONS: "100"
+  TIMEOUT: "30"
+  CORS_ORIGINS: "https://kavalan.in,https://www.kavalan.in"
+
+---
+# Secret (example - should be created separately)
+# kubectl create secret generic kavalan-secrets \
+#   --from-literal=database-url='postgresql://...' \
+#   --from-literal=mongodb-url='mongodb://...' \
+#   --from-literal=redis-url='redis://...' \
+#   --from-literal=jwt-secret='...' \
+#   --from-literal=encryption-key='...' \
+#   -n production

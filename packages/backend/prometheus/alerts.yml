@@ -1,0 +1,320 @@
+groups:
+  - name: kavalan_threat_detection
+    interval: 30s
+    rules:
+      - alert: HighThreatDetectionRate
+        expr: rate(kavalan_threats_detected_total{threat_level=~"high|critical"}[5m]) > 1.0
+        for: 2m
+        labels:
+          severity: warning
+          component: threat-detection
+        annotations:
+          summary: "High rate of critical threats detected"
+          description: "Detecting {{ $value | humanize }} high/critical threats per second"
+
+      - alert: NoThreatsDetected
+        expr: rate(kavalan_threats_detected_total[1h]) == 0
+        for: 1h
+        labels:
+          severity: info
+          component: threat-detection
+        annotations:
+          summary: "No threats detected in last hour"
+          description: "System may not be processing data or threat patterns need review"
+
+  - name: kavalan_performance
+    interval: 30s
+    rules:
+      - alert: HighEndToEndLatency
+        expr: histogram_quantile(0.95, rate(kavalan_end_to_end_latency_seconds_bucket[5m])) > 2.0
+        for: 5m
+        labels:
+          severity: warning
+          component: performance
+        annotations:
+          summary: "High end-to-end processing latency"
+          description: "p95 latency is {{ $value | humanizeDuration }} (threshold: 2s)"
+
+      - alert: CriticalEndToEndLatency
+        expr: histogram_quantile(0.95, rate(kavalan_end_to_end_latency_seconds_bucket[5m])) > 5.0
+        for: 2m
+        labels:
+          severity: critical
+          component: performance
+        annotations:
+          summary: "Critical end-to-end processing latency"
+          description: "p95 latency is {{ $value | humanizeDuration }} (threshold: 5s)"
+
+      - alert: AudioTranscriptionSlow
+        expr: histogram_quantile(0.95, rate(kavalan_audio_transcription_duration_seconds_bucket[5m])) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+          component: audio-service
+        annotations:
+          summary: "Audio transcription is slow"
+          description: "p95 latency is {{ $value | humanizeDuration }} (target: <500ms)"
+
+      - alert: VisualAnalysisSlow
+        expr: histogram_quantile(0.95, rate(kavalan_visual_analysis_duration_seconds_bucket[5m])) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: visual-service
+        annotations:
+          summary: "Visual analysis is slow"
+          description: "p95 latency is {{ $value | humanizeDuration }} (target: <300ms)"
+
+      - alert: LivenessDetectionSlow
+        expr: histogram_quantile(0.95, rate(kavalan_liveness_detection_duration_seconds_bucket[5m])) > 0.3
+        for: 5m
+        labels:
+          severity: warning
+          component: liveness-service
+        annotations:
+          summary: "Liveness detection is slow"
+          description: "p95 latency is {{ $value | humanizeDuration }} (target: <200ms)"
+
+  - name: kavalan_errors
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: rate(kavalan_errors_total[5m]) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: errors
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanize }} errors/sec"
+
+      - alert: CriticalErrorRate
+        expr: rate(kavalan_errors_total[5m]) > 1.0
+        for: 1m
+        labels:
+          severity: critical
+          component: errors
+        annotations:
+          summary: "Critical error rate detected"
+          description: "Error rate is {{ $value | humanize }} errors/sec"
+
+      - alert: HighHTTPErrorRate
+        expr: sum(rate(kavalan_http_requests_total{status=~"5.."}[5m])) / sum(rate(kavalan_http_requests_total[5m])) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+          component: http
+        annotations:
+          summary: "High HTTP 5xx error rate"
+          description: "{{ $value | humanizePercentage }} of requests are failing"
+
+  - name: kavalan_workers
+    interval: 30s
+    rules:
+      - alert: NoActiveWorkers
+        expr: kavalan_celery_workers_active < 1
+        for: 1m
+        labels:
+          severity: critical
+          component: workers
+        annotations:
+          summary: "No active Celery workers"
+          description: "Worker count is {{ $value }}. Tasks cannot be processed."
+
+      - alert: LowWorkerCount
+        expr: kavalan_celery_workers_active < 3
+        for: 5m
+        labels:
+          severity: warning
+          component: workers
+        annotations:
+          summary: "Low worker count"
+          description: "Only {{ $value }} workers active. Consider scaling up."
+
+      - alert: HighWorkerUtilization
+        expr: avg(kavalan_celery_worker_utilization) > 90
+        for: 10m
+        labels:
+          severity: warning
+          component: workers
+        annotations:
+          summary: "High worker utilization"
+          description: "Average worker utilization is {{ $value | humanize }}%"
+
+      - alert: HighQueueDepth
+        expr: kavalan_celery_queue_depth > 500
+        for: 5m
+        labels:
+          severity: warning
+          component: queue
+        annotations:
+          summary: "High queue depth in {{ $labels.queue_name }}"
+          description: "Queue depth is {{ $value }} tasks. Workers may be overwhelmed."
+
+      - alert: CriticalQueueDepth
+        expr: kavalan_celery_queue_depth > 1000
+        for: 2m
+        labels:
+          severity: critical
+          component: queue
+        annotations:
+          summary: "Critical queue depth in {{ $labels.queue_name }}"
+          description: "Queue depth is {{ $value }} tasks. Immediate action required."
+
+  - name: kavalan_external_apis
+    interval: 30s
+    rules:
+      - alert: ExternalAPIHighLatency
+        expr: histogram_quantile(0.95, rate(kavalan_external_api_duration_seconds_bucket[5m])) by (api_name) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+          component: external-api
+        annotations:
+          summary: "High latency for {{ $labels.api_name }}"
+          description: "p95 latency is {{ $value | humanizeDuration }}"
+
+      - alert: ExternalAPIHighFailureRate
+        expr: sum(rate(kavalan_external_api_calls_total{status!="success"}[5m])) by (api_name) / sum(rate(kavalan_external_api_calls_total[5m])) by (api_name) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: external-api
+        annotations:
+          summary: "High failure rate for {{ $labels.api_name }}"
+          description: "{{ $value | humanizePercentage }} of calls are failing"
+
+  - name: kavalan_circuit_breakers
+    interval: 30s
+    rules:
+      - alert: CircuitBreakerOpen
+        expr: kavalan_circuit_breaker_state == 1
+        for: 2m
+        labels:
+          severity: critical
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker open for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} is failing. Circuit breaker is open."
+
+      - alert: CircuitBreakerHalfOpen
+        expr: kavalan_circuit_breaker_state == 2
+        for: 5m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "Circuit breaker half-open for {{ $labels.service }}"
+          description: "Service {{ $labels.service }} is in recovery mode."
+
+      - alert: HighCircuitBreakerFailures
+        expr: rate(kavalan_circuit_breaker_failures_total[5m]) > 0.5
+        for: 2m
+        labels:
+          severity: warning
+          component: circuit-breaker
+        annotations:
+          summary: "High circuit breaker failure rate for {{ $labels.service }}"
+          description: "{{ $value | humanize }} failures/sec"
+
+  - name: kavalan_database
+    interval: 30s
+    rules:
+      - alert: HighDatabaseLatency
+        expr: histogram_quantile(0.95, rate(kavalan_database_operation_duration_seconds_bucket[5m])) by (database, operation) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "High database latency for {{ $labels.database }}"
+          description: "p95 latency for {{ $labels.operation }} is {{ $value | humanizeDuration }}"
+
+      - alert: DatabaseOperationFailures
+        expr: sum(rate(kavalan_database_operations_total{status="failure"}[5m])) by (database) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "Database operation failures for {{ $labels.database }}"
+          description: "{{ $value | humanize }} failures/sec"
+
+  - name: kavalan_cache
+    interval: 30s
+    rules:
+      - alert: LowCacheHitRate
+        expr: sum(rate(kavalan_cache_operations_total{operation="get", result="hit"}[5m])) / sum(rate(kavalan_cache_operations_total{operation="get"}[5m])) < 0.5
+        for: 10m
+        labels:
+          severity: info
+          component: cache
+        annotations:
+          summary: "Low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}"
+
+      - alert: VeryLowCacheHitRate
+        expr: sum(rate(kavalan_cache_operations_total{operation="get", result="hit"}[5m])) / sum(rate(kavalan_cache_operations_total{operation="get"}[5m])) < 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Very low cache hit rate"
+          description: "Cache hit rate is {{ $value | humanizePercentage }}. Cache may not be working properly."
+
+  - name: kavalan_websocket
+    interval: 30s
+    rules:
+      - alert: HighWebSocketConnections
+        expr: kavalan_websocket_connections_active > 1000
+        for: 5m
+        labels:
+          severity: warning
+          component: websocket
+        annotations:
+          summary: "High number of WebSocket connections"
+          description: "{{ $value }} active connections. Consider scaling."
+
+      - alert: NoWebSocketConnections
+        expr: kavalan_websocket_connections_active == 0
+        for: 10m
+        labels:
+          severity: info
+          component: websocket
+        annotations:
+          summary: "No active WebSocket connections"
+          description: "No users are currently connected via WebSocket."
+
+  - name: kavalan_system
+    interval: 30s
+    rules:
+      - alert: ServiceDown
+        expr: up{job="kavalan-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: system
+        annotations:
+          summary: "Kavalan API is down"
+          description: "The Kavalan API service is not responding to health checks."
+
+      - alert: HighMemoryUsage
+        expr: process_resident_memory_bytes{job="kavalan-api"} > 2e9
+        for: 5m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value | humanize1024 }}B"
+
+      - alert: TaskProcessingStalled
+        expr: rate(kavalan_celery_tasks_total[5m]) == 0
+        for: 10m
+        labels:
+          severity: warning
+          component: system
+        annotations:
+          summary: "Task processing appears stalled"
+          description: "No tasks have been processed in the last 10 minutes."
