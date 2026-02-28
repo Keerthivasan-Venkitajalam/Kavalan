@@ -22,6 +22,7 @@ AI-powered browser extension protecting users from Digital Arrest scams through 
 ## About the Project
 
 Kavalan was developed by Team Thudakkam and recognized with 2nd Prize at GenAI Hackathon ML.Cbe 2025, organized by AI Tamil Nadu in collaboration with Nunnari Labs, DeepWeaver.ai, and Google for Developers.
+Hackathon Demo URL - https://shorturl.at/063PD
 
 ---
 
