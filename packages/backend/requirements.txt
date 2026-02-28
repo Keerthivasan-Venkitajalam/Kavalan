@@ -13,7 +13,7 @@ motor==3.3.2
 psycopg2-binary==2.9.9
 
 # AI/ML
-openai-whisper==20231117
+openai==1.12.0  # Includes Whisper API support
 google-generativeai==0.4.0
 mediapipe==0.10.11
 numpy==1.26.4
